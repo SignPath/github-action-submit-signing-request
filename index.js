@@ -37835,7 +37835,7 @@ exports.httpErrorResponseToText = httpErrorResponseToText;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '0.1';
+const taskVersion = '0.3';
 exports.taskVersion = taskVersion;
 
 
