@@ -37728,6 +37728,7 @@ class Task {
             signPathApiToken: this.helperInputOutput.signPathApiToken,
             artifactName: this.helperInputOutput.githubArtifactName,
             gitHubWorkflowRunId: process.env.GITHUB_RUN_ID,
+            gitHubWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
             gitHubRepository: process.env.GITHUB_REPOSITORY,
             gitHubRepositoryOwner: process.env.GITHUB_REPOSITORY_OWNER,
             gitHubToken: this.helperInputOutput.gitHubToken,
@@ -37881,7 +37882,7 @@ exports.httpErrorResponseToText = httpErrorResponseToText;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '0.3';
+const taskVersion = '0.4';
 exports.taskVersion = taskVersion;
 
 
