@@ -192,6 +192,11 @@ class HelperInputOutput {
     get gitHubExtendedVerificationToken() {
         return core.getInput('github-extended-verification-token', { required: false });
     }
+    get parameters() {
+        const value = core.getInput('parameters', { required: false });
+        console.log(`parameters: ${value}`);
+        return (0, utils_1.parseUseDefinedParameters)(value);
+    }
     get signingPolicySlug() {
         return core.getInput('signing-policy-slug', { required: true });
     }
@@ -37735,7 +37740,8 @@ class Task {
             signPathOrganizationId: this.helperInputOutput.organizationId,
             signPathProjectSlug: this.helperInputOutput.projectSlug,
             signPathSigningPolicySlug: this.helperInputOutput.signingPolicySlug,
-            signPathArtifactConfigurationSlug: this.helperInputOutput.artifactConfigurationSlug
+            signPathArtifactConfigurationSlug: this.helperInputOutput.artifactConfigurationSlug,
+            parameters: this.helperInputOutput.parameters
         };
     }
 }
@@ -37814,7 +37820,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.httpErrorResponseToText = exports.buildSignPathAuthorizationHeader = exports.getInputNumber = exports.executeWithRetries = void 0;
+exports.parseUseDefinedParameters = exports.httpErrorResponseToText = exports.buildSignPathAuthorizationHeader = exports.getInputNumber = exports.executeWithRetries = void 0;
 const moment = __importStar(__nccwpck_require__(7393));
 const core = __importStar(__nccwpck_require__(8163));
 function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs) {
@@ -37870,6 +37876,46 @@ function httpErrorResponseToText(err) {
     return err.message;
 }
 exports.httpErrorResponseToText = httpErrorResponseToText;
+function parseUseDefinedParameters(parameters) {
+    // split value by lines
+    const parmLines = parameters.split('\n');
+    // for each line get param name and value
+    return parmLines.map(parseUseDefinedParameter)
+        .filter(p => p !== null)
+        .map(p => p);
+}
+exports.parseUseDefinedParameters = parseUseDefinedParameters;
+function parseUseDefinedParameter(line) {
+    var _a;
+    if (!line) {
+        return null;
+    }
+    const nameValueSeparatorIndex = line.indexOf(':');
+    if (nameValueSeparatorIndex === -1) {
+        throw new Error(`Invalid parameter line: ${line}`);
+    }
+    const name = line.substring(0, nameValueSeparatorIndex).trim();
+    const value = line.substring(nameValueSeparatorIndex + 1).trim();
+    // validate name
+    if (!name) {
+        throw new Error(`Parameter name cannot be empty. Line: ${line}`);
+    }
+    if (((_a = /[a-zA-Z0-9.\-_]+/.exec(name)) === null || _a === void 0 ? void 0 : _a[0]) !== name) {
+        throw new Error(`Invalid parameter name: ${name}. Only alphanumeric characters, dots, dashes and underscores are allowed.`);
+    }
+    // validate value
+    let parsedValue = null;
+    try {
+        parsedValue = JSON.parse(value);
+    }
+    catch (_b) {
+        parsedValue = value;
+    }
+    if (`"${parsedValue}"` !== value) {
+        throw new Error(`Invalid parameter value: ${value}. Only valid JSON strings are allowed.`);
+    }
+    return { name, value: parsedValue };
+}
 
 
 /***/ }),
