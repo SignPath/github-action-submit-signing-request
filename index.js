@@ -194,8 +194,7 @@ class HelperInputOutput {
     }
     get parameters() {
         const value = core.getInput('parameters', { required: false });
-        console.log(`parameters: ${value}`);
-        return (0, utils_1.parseUseDefinedParameters)(value);
+        return (0, utils_1.parseUserDefinedParameters)(value);
     }
     get signingPolicySlug() {
         return core.getInput('signing-policy-slug', { required: true });
@@ -37820,7 +37819,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseUseDefinedParameters = exports.httpErrorResponseToText = exports.buildSignPathAuthorizationHeader = exports.getInputNumber = exports.executeWithRetries = void 0;
+exports.parseUserDefinedParameters = exports.httpErrorResponseToText = exports.buildSignPathAuthorizationHeader = exports.getInputNumber = exports.executeWithRetries = void 0;
 const moment = __importStar(__nccwpck_require__(7393));
 const core = __importStar(__nccwpck_require__(8163));
 function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs) {
@@ -37876,7 +37875,7 @@ function httpErrorResponseToText(err) {
     return err.message;
 }
 exports.httpErrorResponseToText = httpErrorResponseToText;
-function parseUseDefinedParameters(parameters) {
+function parseUserDefinedParameters(parameters) {
     // split value by lines
     const parmLines = parameters.split('\n');
     // for each line get param name and value
@@ -37884,7 +37883,7 @@ function parseUseDefinedParameters(parameters) {
         .filter(p => p !== null)
         .map(p => p);
 }
-exports.parseUseDefinedParameters = parseUseDefinedParameters;
+exports.parseUserDefinedParameters = parseUserDefinedParameters;
 function parseUseDefinedParameter(line) {
     var _a;
     if (!line) {
@@ -37909,9 +37908,9 @@ function parseUseDefinedParameter(line) {
         parsedValue = JSON.parse(value);
     }
     catch (_b) {
-        parsedValue = value;
+        parsedValue = null;
     }
-    if (`"${parsedValue}"` !== value) {
+    if (typeof (parsedValue) !== 'string') {
         throw new Error(`Invalid parameter value: ${value}. Only valid JSON strings are allowed.`);
     }
     return { name, value: parsedValue };
