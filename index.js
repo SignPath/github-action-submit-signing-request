@@ -37907,8 +37907,8 @@ function parseUseDefinedParameter(line) {
     try {
         parsedValue = JSON.parse(value);
     }
-    catch (_b) {
-        parsedValue = null;
+    catch (e) {
+        throw new Error(`Invalid parameter value: ${value} - ${e}. Only valid JSON strings are allowed.`);
     }
     if (typeof (parsedValue) !== 'string') {
         throw new Error(`Invalid parameter value: ${value}. Only valid JSON strings are allowed.`);
@@ -37926,7 +37926,7 @@ function parseUseDefinedParameter(line) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '0.3';
+const taskVersion = '0.5';
 exports.taskVersion = taskVersion;
 
 
