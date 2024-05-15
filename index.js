@@ -168,8 +168,8 @@ class HelperInputOutput {
     get signPathConnectorUrl() {
         return core.getInput('connector-url', { required: true });
     }
-    get githubArtifactName() {
-        return core.getInput('github-artifact-name', { required: true });
+    get githubArtifactId() {
+        return core.getInput('github-artifact-id', { required: true });
     }
     get outputArtifactDirectory() {
         return core.getInput('output-artifact-directory', { required: false });
@@ -37571,7 +37571,7 @@ class Task {
         if (validationResult && validationResult.errors.length > 0) {
             // got validation errors from the connector
             core.startGroup('CI system setup validation errors');
-            core.error(`Build artifact \"${this.helperInputOutput.githubArtifactName}\" cannot be signed because of continuous integration system setup validation errors:`);
+            core.error(`Build artifact with id \"${this.helperInputOutput.githubArtifactId}\" cannot be signed because of continuous integration system setup validation errors:`);
             validationResult.errors.forEach(validationError => {
                 core.error(`${validationError.error}`);
                 if (validationError.howToFix) {
@@ -37730,7 +37730,7 @@ class Task {
     buildSigningRequestPayload() {
         return {
             signPathApiToken: this.helperInputOutput.signPathApiToken,
-            artifactName: this.helperInputOutput.githubArtifactName,
+            artifactId: this.helperInputOutput.githubArtifactId,
             gitHubWorkflowRunId: process.env.GITHUB_RUN_ID,
             gitHubRepository: process.env.GITHUB_REPOSITORY,
             gitHubRepositoryOwner: process.env.GITHUB_REPOSITORY_OWNER,
