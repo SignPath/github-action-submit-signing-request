@@ -37750,7 +37750,6 @@ class Task {
                         core.debug(log.message);
                         break;
                     case submit_signing_request_result_1.LogLevelInformation:
-                        console.log('asdasdasdasdasd');
                         core.info(log.message);
                         break;
                     case submit_signing_request_result_1.LogLevelWarning:
