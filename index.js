@@ -204,9 +204,6 @@ class HelperInputOutput {
     get gitHubToken() {
         return core.getInput('github-token', { required: true });
     }
-    get gitHubExtendedVerificationToken() {
-        return core.getInput('github-extended-verification-token', { required: false });
-    }
     get parameters() {
         const value = core.getInput('parameters', { required: false });
         return (0, utils_1.parseUserDefinedParameters)(value);
@@ -37753,7 +37750,6 @@ class Task {
                         core.debug(log.message);
                         break;
                     case submit_signing_request_result_1.LogLevelInformation:
-                        console.log('asdasdasdasdasd');
                         core.info(log.message);
                         break;
                     case submit_signing_request_result_1.LogLevelWarning:
@@ -37777,7 +37773,6 @@ class Task {
             gitHubRepository: process.env.GITHUB_REPOSITORY,
             gitHubRepositoryOwner: process.env.GITHUB_REPOSITORY_OWNER,
             gitHubToken: this.helperInputOutput.gitHubToken,
-            gitHubExtendedVerificationToken: this.helperInputOutput.gitHubExtendedVerificationToken,
             signPathOrganizationId: this.helperInputOutput.organizationId,
             signPathProjectSlug: this.helperInputOutput.projectSlug,
             signPathSigningPolicySlug: this.helperInputOutput.signingPolicySlug,
@@ -37968,7 +37963,7 @@ function parseUseDefinedParameter(line) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '0.5';
+const taskVersion = '1.1';
 exports.taskVersion = taskVersion;
 
 
