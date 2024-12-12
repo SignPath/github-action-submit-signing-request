@@ -20,6 +20,21 @@ exports.Config = Config;
 
 /***/ }),
 
+/***/ 983:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.LogLevelError = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelDebug = void 0;
+exports.LogLevelDebug = "Debug";
+exports.LogLevelInformation = "Information";
+exports.LogLevelWarning = "Warning";
+exports.LogLevelError = "Error";
+
+
+/***/ }),
+
 /***/ 2198:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -37492,6 +37507,7 @@ const axios_retry_1 = __importDefault(__nccwpck_require__(3434));
 const core = __importStar(__nccwpck_require__(8163));
 const moment = __importStar(__nccwpck_require__(7393));
 const url_1 = __importDefault(__nccwpck_require__(7310));
+const submit_signing_request_result_1 = __nccwpck_require__(983);
 const utils_1 = __nccwpck_require__(9586);
 const signpath_url_builder_1 = __nccwpck_require__(2139);
 const version_1 = __nccwpck_require__(2398);
@@ -37553,6 +37569,7 @@ class Task {
                 .data;
             this.checkResponseStructure(response);
             this.checkCiSystemValidationResult(response.validationResult);
+            this.redirectConnectorLogsToActionLogs(response.logs);
             const signingRequestUrlObj = url_1.default.parse(response.signingRequestUrl);
             this.urlBuilder.signPathBaseUrl = signingRequestUrlObj.protocol + '//' + signingRequestUrlObj.host;
             core.info(`SignPath signing request has been successfully submitted`);
@@ -37721,7 +37738,32 @@ class Task {
         if (!response.validationResult && !response.signingRequestId) {
             // if neither validationResult nor signingRequestId are present,
             // then the response might be not from the connector
+            core.error(`Unexpected response from the SignPath connector: ${JSON.stringify(response)}`);
             throw new Error(`SignPath signing request was not created. Please make sure that connector-url is pointing to the SignPath GitHub Actions connector endpoint.`);
+        }
+    }
+    redirectConnectorLogsToActionLogs(logs) {
+        if (logs && logs.length > 0) {
+            logs.forEach(log => {
+                switch (log.level) {
+                    case submit_signing_request_result_1.LogLevelDebug:
+                        core.debug(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelInformation:
+                        console.log('asdasdasdasdasd');
+                        core.info(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelWarning:
+                        core.warning(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelError:
+                        core.error(log.message);
+                        break;
+                    default:
+                        core.info(log.message);
+                        break;
+                }
+            });
         }
     }
     buildSigningRequestPayload() {
