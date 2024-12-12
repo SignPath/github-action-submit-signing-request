@@ -37568,8 +37568,8 @@ class Task {
             }))
                 .data;
             this.checkResponseStructure(response);
-            this.checkCiSystemValidationResult(response.validationResult);
             this.redirectConnectorLogsToActionLogs(response.logs);
+            this.checkCiSystemValidationResult(response.validationResult);
             const signingRequestUrlObj = url_1.default.parse(response.signingRequestUrl);
             this.urlBuilder.signPathBaseUrl = signingRequestUrlObj.protocol + '//' + signingRequestUrlObj.host;
             core.info(`SignPath signing request has been successfully submitted`);
@@ -37759,7 +37759,7 @@ class Task {
                         core.error(log.message);
                         break;
                     default:
-                        core.info(log.message);
+                        core.info(`${log.level}:${log.message}`);
                         break;
                 }
             });
