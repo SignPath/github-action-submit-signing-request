@@ -134,9 +134,7 @@ class HelperArtifactDownload {
         });
     }
     resolveOrCreateDirectory(relativePath) {
-        const workingDirectory = process.env.GITHUB_WORKSPACE;
-        const absolutePath = path.isAbsolute(relativePath) ? relativePath :
-            path.join(workingDirectory, relativePath);
+        const absolutePath = path.join(process.env.GITHUB_WORKSPACE, relativePath);
         if (!fs.existsSync(absolutePath)) {
             core.info(`Directory "${absolutePath}" does not exist and will be created`);
             fs.mkdirSync(absolutePath, { recursive: true });
