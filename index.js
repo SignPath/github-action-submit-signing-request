@@ -133,10 +133,10 @@ class HelperArtifactDownload {
             core.info(`The signed artifact has been successfully downloaded from SignPath and extracted to ${targetDirectory}`);
         });
     }
-    resolveOrCreateDirectory(relativePath) {
+    resolveOrCreateDirectory(directoryPath) {
         const workingDirectory = process.env.GITHUB_WORKSPACE;
-        const absolutePath = path.isAbsolute(relativePath) ? relativePath :
-            path.join(workingDirectory, relativePath);
+        const absolutePath = path.isAbsolute(directoryPath) ? directoryPath :
+            path.join(workingDirectory, directoryPath);
         if (!fs.existsSync(absolutePath)) {
             core.info(`Directory "${absolutePath}" does not exist and will be created`);
             fs.mkdirSync(absolutePath, { recursive: true });
