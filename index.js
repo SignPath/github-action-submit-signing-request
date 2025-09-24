@@ -25,7 +25,6 @@ exports.Config = Config;
 
 "use strict";
 
-// TODO: write tests
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ConnectorUrlBuilder = void 0;
 class ConnectorUrlBuilder {
@@ -131,10 +130,7 @@ class HelperArtifactDownload {
             const timeoutMs = this.helperInputOutput.downloadSignedArtifactTimeoutInSeconds * 1000;
             const response = yield axios_1.default.get(artifactDownloadUrl, {
                 responseType: 'stream',
-                timeout: timeoutMs,
-                headers: {
-                    Authorization: (0, utils_1.buildSignPathAuthorizationHeader)(this.helperInputOutput.signPathApiToken)
-                }
+                timeout: timeoutMs
             })
                 .catch((e) => {
                 throw new Error((0, utils_1.httpErrorResponseToText)(e));
@@ -37520,14 +37516,14 @@ const version_1 = __nccwpck_require__(2398);
 // output variables
 // signingRequestId - the id of the newly created signing request
 // signingRequestWebUrl - the url of the signing request in SignPath
-// signPathApiUrl - the base API url of the SignPath API
-// signingRequestDownloadUrl - the url of the signed artifact in SignPath
+// signingRequestDownloadUrl - the url of the signed artifact to retrieve via the connector
 class Task {
     constructor(helperInputOutput, helperArtifactDownload, config) {
         this.helperInputOutput = helperInputOutput;
         this.helperArtifactDownload = helperArtifactDownload;
         this.config = config;
         this.urlBuilder = new connector_url_builder_1.ConnectorUrlBuilder(this.helperInputOutput.signPathConnectorUrl, this.helperInputOutput.organizationId);
+        this.userAgent = `SignPath.SubmitSigningRequestGitHubAction/${version_1.taskVersion}(NodeJS/${process.version}; ${process.platform} ${process.arch}})`;
     }
     run() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -37551,16 +37547,14 @@ class Task {
     }
     submitSigningRequest() {
         return __awaiter(this, void 0, void 0, function* () {
-            core.info('Submitting the signing request to SignPath CI connector...');
+            const submitSigningRequestUrl = this.urlBuilder.buildSubmitSigningRequestUrl();
+            core.info('Submitting the signing request to SignPath GitHub Actions connector...');
             // prepare the payload
             const submitRequestPayload = this.buildSigningRequestPayload();
-            // call the signPath API to submit the signing request
+            // call the connector to submit the signing request
             const response = (yield axios_1.default
-                .post(this.urlBuilder.buildSubmitSigningRequestUrl(), submitRequestPayload, {
-                responseType: "json",
-                headers: {
-                    "Authorization": (0, utils_1.buildSignPathAuthorizationHeader)(this.helperInputOutput.signPathApiToken)
-                }
+                .post(submitSigningRequestUrl, submitRequestPayload, {
+                responseType: "json"
             })
                 .catch((e) => {
                 if (e.code === axios_1.AxiosError.ERR_BAD_REQUEST) {
@@ -37586,8 +37580,7 @@ class Task {
             core.info(`You can view the signing request here: ${response.signingRequestUrl}`);
             this.helperInputOutput.setSigningRequestId(response.signingRequestId);
             this.helperInputOutput.setSigningRequestWebUrl(response.signingRequestUrl);
-            // TODO: think what to set as output
-            // this.helperInputOutput.setSignPathApiUrl(this.urlBuilder.signPathBaseUrl + '/API');
+            this.helperInputOutput.setSignedArtifactDownloadUrl(this.urlBuilder.buildGetSignedArtifactUrl(response.signingRequestId));
             return response.signingRequestId;
         });
     }
@@ -37606,7 +37599,6 @@ class Task {
             throw new Error("CI system validation failed.");
         }
     }
-    // TODO: what the heck
     // if auto-generated GitHub Actions token (secrets.GITHUB_TOKEN) is used for artifact download,
     // ensure the workflow continues running until the download is complete.
     // The token is valid only for the workflow's duration
@@ -37674,12 +37666,10 @@ class Task {
     getSigningRequestStatus(signingRequestId) {
         return __awaiter(this, void 0, void 0, function* () {
             const requestStatusUrl = this.urlBuilder.buildGetSigningRequestStatusUrl(signingRequestId);
+            core.info(`Sending request: GET ${requestStatusUrl}`);
             const signingRequestStatusDto = yield axios_1.default
                 .get(requestStatusUrl, {
-                responseType: "json",
-                headers: {
-                    "Authorization": (0, utils_1.buildSignPathAuthorizationHeader)(this.helperInputOutput.signPathApiToken)
-                }
+                responseType: "json"
             })
                 .catch((e) => {
                 core.error(`SignPath API call error: ${e.message}`);
@@ -37692,9 +37682,17 @@ class Task {
     }
     configureAxios() {
         // set user agent
-        axios_1.default.defaults.headers.common['User-Agent'] = this.buildUserAgent();
+        axios_1.default.defaults.headers.common['User-Agent'] = this.userAgent;
+        // set token for all outgoing requests
+        axios_1.default.defaults.headers.common.Authorization = `Bearer ${this.helperInputOutput.signPathApiToken}`;
         const timeoutMs = this.helperInputOutput.serviceUnavailableTimeoutInSeconds * 1000;
         axios_1.default.defaults.timeout = timeoutMs;
+        // log all outgoing requests
+        axios_1.default.interceptors.request.use(request => {
+            var _a;
+            core.info(`Sending request: ${(_a = request.method) === null || _a === void 0 ? void 0 : _a.toUpperCase()} ${request.url}`);
+            return request;
+        });
         // original axiosRetry doesn't work for POST requests
         // thats why we need to override some functions
         axios_retry_1.default.isNetworkOrIdempotentRequestError = (error) => {
@@ -37740,10 +37738,6 @@ class Task {
             retries: maxRetryCount,
             retryCondition: axios_retry_1.default.isNetworkOrIdempotentRequestError
         });
-    }
-    buildUserAgent() {
-        const userAgent = `SignPath.SubmitSigningRequestGitHubAction/${version_1.taskVersion}(NodeJS/${process.version}; ${process.platform} ${process.arch}})`;
-        return userAgent;
     }
     checkResponseStructure(response) {
         if (!response.validationResult && !response.signingRequestId) {
@@ -37864,7 +37858,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseUserDefinedParameters = exports.httpErrorResponseToText = exports.buildSignPathAuthorizationHeader = exports.getInputNumber = exports.executeWithRetries = void 0;
+exports.parseUserDefinedParameters = exports.httpErrorResponseToText = exports.getInputNumber = exports.executeWithRetries = void 0;
 const moment = __importStar(__nccwpck_require__(7393));
 const core = __importStar(__nccwpck_require__(8163));
 function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs) {
@@ -37901,10 +37895,6 @@ function getInputNumber(name, options) {
     return result;
 }
 exports.getInputNumber = getInputNumber;
-function buildSignPathAuthorizationHeader(apiToken) {
-    return `Bearer ${apiToken}`;
-}
-exports.buildSignPathAuthorizationHeader = buildSignPathAuthorizationHeader;
 function httpErrorResponseToText(err) {
     const response = err.response;
     if (response && response.data) {
