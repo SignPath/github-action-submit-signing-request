@@ -258,7 +258,6 @@ class HelperInputOutput {
     get serviceUnavailableTimeoutInSeconds() {
         return (0, utils_1.getInputNumber)('service-unavailable-timeout-in-seconds', { required: true });
     }
-    // TODO: change to connector right?
     setSignedArtifactDownloadUrl(url) {
         core.setOutput('signed-artifact-download-url', url);
     }
@@ -267,10 +266,6 @@ class HelperInputOutput {
     }
     setSigningRequestWebUrl(signingRequestUrl) {
         core.setOutput('signing-request-web-url', signingRequestUrl);
-    }
-    // TODO: drop?
-    setSignPathApiUrl(signingRequestUrl) {
-        core.setOutput('signpath-api-url', signingRequestUrl);
     }
 }
 exports.HelperInputOutput = HelperInputOutput;
@@ -37966,10 +37961,9 @@ function parseUseDefinedParameter(line) {
 
 "use strict";
 
-// TODO: this does not correspond with actual version!
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '1.1';
+const taskVersion = '1.4';
 exports.taskVersion = taskVersion;
 
 
