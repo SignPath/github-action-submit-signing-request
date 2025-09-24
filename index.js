@@ -37666,7 +37666,6 @@ class Task {
     getSigningRequestStatus(signingRequestId) {
         return __awaiter(this, void 0, void 0, function* () {
             const requestStatusUrl = this.urlBuilder.buildGetSigningRequestStatusUrl(signingRequestId);
-            core.info(`Sending request: GET ${requestStatusUrl}`);
             const signingRequestStatusDto = yield axios_1.default
                 .get(requestStatusUrl, {
                 responseType: "json"
@@ -37690,8 +37689,16 @@ class Task {
         // log all outgoing requests
         axios_1.default.interceptors.request.use(request => {
             var _a;
-            core.info(`Sending request: ${(_a = request.method) === null || _a === void 0 ? void 0 : _a.toUpperCase()} ${request.url}`);
+            core.debug(`Sending request: ${(_a = request.method) === null || _a === void 0 ? void 0 : _a.toUpperCase()} ${request.url}`);
             return request;
+        });
+        // log all outgoing responses
+        axios_1.default.interceptors.response.use(response => {
+            core.debug(`Received response: ${response.status} ${response.statusText} from ${response.request.url}`);
+            return response;
+        }, error => {
+            core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            return Promise.reject(error);
         });
         // original axiosRetry doesn't work for POST requests
         // thats why we need to override some functions
