@@ -37508,6 +37508,7 @@ const submit_signing_request_result_1 = __nccwpck_require__(983);
 const utils_1 = __nccwpck_require__(9586);
 const connector_url_builder_1 = __nccwpck_require__(4876);
 const version_1 = __nccwpck_require__(2398);
+const https_1 = __nccwpck_require__(5687);
 // output variables
 // signingRequestId - the id of the newly created signing request
 // signingRequestWebUrl - the url of the signing request in SignPath
@@ -37677,6 +37678,9 @@ class Task {
     configureAxios() {
         // set user agent
         axios_1.default.defaults.headers.common['User-Agent'] = this.userAgent;
+        axios_1.default.defaults.httpsAgent = new https_1.Agent({
+            keepAlive: true
+        });
         // set token for all outgoing requests
         axios_1.default.defaults.headers.common.Authorization = `Bearer ${this.helperInputOutput.signPathApiToken}`;
         const timeoutMs = this.helperInputOutput.serviceUnavailableTimeoutInSeconds * 1000;
