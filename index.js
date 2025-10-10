@@ -37676,15 +37676,15 @@ class Task {
         });
     }
     configureAxios() {
+        const timeoutMs = this.helperInputOutput.serviceUnavailableTimeoutInSeconds * 1000;
         // set user agent
         axios_1.default.defaults.headers.common['User-Agent'] = this.userAgent;
         axios_1.default.defaults.httpsAgent = new https_1.Agent({
-            keepAlive: true
+            keepAlive: true,
+            timeout: timeoutMs
         });
         // set token for all outgoing requests
         axios_1.default.defaults.headers.common.Authorization = `Bearer ${this.helperInputOutput.signPathApiToken}`;
-        const timeoutMs = this.helperInputOutput.serviceUnavailableTimeoutInSeconds * 1000;
-        axios_1.default.defaults.timeout = timeoutMs;
         // log all outgoing requests
         axios_1.default.interceptors.request.use(request => {
             var _a;
