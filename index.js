@@ -37694,6 +37694,7 @@ class Task {
             return response;
         }, error => {
             var _a, _b;
+            core.debug(error);
             core.debug(`Received response: ${(_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.status} ${(_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.statusText}`);
             return Promise.reject(error);
         });
