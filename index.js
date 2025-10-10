@@ -37687,12 +37687,14 @@ class Task {
             core.debug(`Sending request: ${(_a = request.method) === null || _a === void 0 ? void 0 : _a.toUpperCase()} ${request.url}`);
             return request;
         });
-        // log all outgoing responses
+        // log all responses
         axios_1.default.interceptors.response.use(response => {
-            core.debug(`Received response: ${response.status} ${response.statusText} from ${response.request.url}`);
+            var _a;
+            core.debug(`Received response: ${response === null || response === void 0 ? void 0 : response.status} ${response === null || response === void 0 ? void 0 : response.statusText} from ${(_a = response === null || response === void 0 ? void 0 : response.request) === null || _a === void 0 ? void 0 : _a.url}`);
             return response;
         }, error => {
-            core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            var _a, _b;
+            core.debug(`Received response: ${(_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.status} ${(_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.statusText}`);
             return Promise.reject(error);
         });
         // original axiosRetry doesn't work for POST requests
