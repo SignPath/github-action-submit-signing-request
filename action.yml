@@ -63,5 +63,5 @@ outputs:
   signed-artifact-download-url:
     description: 'The URL of the signed artifact in SignPath'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'index.js'
