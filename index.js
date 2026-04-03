@@ -187,7 +187,7 @@ class HelperArtifactDownload {
     }
     getFileNameFromContentDisposition(contentDisposition) {
         if (contentDisposition) {
-            // Prefer filename* (RFC 5987 extended notation) — supports Unicode via percent-encoding
+            // Prefer filename* (RFC 5987 extended notation) - supports Unicode via percent-encoding
             const extendedMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
             if (extendedMatch) {
                 return decodeURIComponent(extendedMatch[1]);
