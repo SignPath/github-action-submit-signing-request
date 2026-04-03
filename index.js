@@ -14529,7 +14529,14 @@ class Task {
             core.debug(`Received response: ${response.status} ${response.statusText} from ${response.request.url}`);
             return response;
         }, error => {
-            core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            var _a;
+            // response is absent for network errors, timeouts, and connection failures
+            if (error.response) {
+                core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            }
+            else {
+                core.debug(`Request failed without a response: ${(_a = error.message) !== null && _a !== void 0 ? _a : error}`);
+            }
             return Promise.reject(error);
         });
         // original axiosRetry doesn't work for POST requests
