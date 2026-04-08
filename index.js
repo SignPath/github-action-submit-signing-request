@@ -124,7 +124,7 @@ class HelperArtifactDownload {
     constructor(helperInputOutput) {
         this.helperInputOutput = helperInputOutput;
     }
-    downloadSignedArtifact(artifactDownloadUrl) {
+    downloadSignedArtifact(artifactDownloadUrl, skipDecompress) {
         return __awaiter(this, void 0, void 0, function* () {
             core.info(`Signed artifact url ${artifactDownloadUrl}`);
             const timeoutMs = this.helperInputOutput.downloadSignedArtifactTimeoutInSeconds * 1000;
@@ -137,34 +137,68 @@ class HelperArtifactDownload {
             });
             const targetDirectory = this.resolveOrCreateDirectory(this.helperInputOutput.outputArtifactDirectory);
             core.info(`The signed artifact is being downloaded from SignPath and will be saved to ${targetDirectory}`);
-            core.info(`Going to download signed artifact`);
-            const rootTmpDir = process.env.RUNNER_TEMP;
-            const tmpDir = fs.mkdtempSync(`${rootTmpDir}${path.sep}`);
-            core.debug(`Created temp directory ${tmpDir}`);
-            // save the signed artifact to temp ZIP file
-            const tmpZipFile = path.join(tmpDir, 'artifact_tmp.zip');
-            const writer = fs.createWriteStream(tmpZipFile);
             const timeoutStream = new timeout_stream_1.TimeoutStream({
                 timeoutMs,
                 errorMessage: `Timeout of ${timeoutMs}ms exceeded while downloading the signed artifact from SignPath`
             });
-            response.data.pipe(timeoutStream)
-                .on('timeout', (err) => {
-                response.data.req.abort();
-                response.data.emit('error', err);
-            })
-                .pipe(writer);
-            yield new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-            core.debug(`The signed artifact ZIP has been saved to ${tmpZipFile}`);
-            core.debug(`Extracting the signed artifact from ${tmpZipFile} to ${targetDirectory}`);
-            // unzip temp ZIP file to the targetDirectory
-            const zip = new nodeStreamZip.async({ file: tmpZipFile });
-            yield zip.extract(null, targetDirectory);
-            core.info(`The signed artifact has been successfully downloaded from SignPath and extracted to ${targetDirectory}`);
+            if (skipDecompress) {
+                const fileName = this.getFileNameFromContentDisposition(response.headers['content-disposition']);
+                const targetFile = path.join(targetDirectory, fileName);
+                core.info(`Going to download signed artifact to ${targetFile}`);
+                const writer = fs.createWriteStream(targetFile);
+                response.data.pipe(timeoutStream)
+                    .on('timeout', (err) => {
+                    response.data.req.abort();
+                    response.data.emit('error', err);
+                })
+                    .pipe(writer);
+                yield new Promise((resolve, reject) => {
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                });
+                core.info(`The signed artifact has been successfully downloaded from SignPath and saved to ${targetFile}`);
+            }
+            else {
+                core.info(`Going to download signed artifact`);
+                const rootTmpDir = process.env.RUNNER_TEMP;
+                const tmpDir = fs.mkdtempSync(`${rootTmpDir}${path.sep}`);
+                core.debug(`Created temp directory ${tmpDir}`);
+                // save the signed artifact to temp ZIP file
+                const tmpZipFile = path.join(tmpDir, 'artifact_tmp.zip');
+                const writer = fs.createWriteStream(tmpZipFile);
+                response.data.pipe(timeoutStream)
+                    .on('timeout', (err) => {
+                    response.data.req.abort();
+                    response.data.emit('error', err);
+                })
+                    .pipe(writer);
+                yield new Promise((resolve, reject) => {
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                });
+                core.debug(`The signed artifact ZIP has been saved to ${tmpZipFile}`);
+                core.debug(`Extracting the signed artifact from ${tmpZipFile} to ${targetDirectory}`);
+                // unzip temp ZIP file to the targetDirectory
+                const zip = new nodeStreamZip.async({ file: tmpZipFile });
+                yield zip.extract(null, targetDirectory);
+                core.info(`The signed artifact has been successfully downloaded from SignPath and extracted to ${targetDirectory}`);
+            }
         });
+    }
+    getFileNameFromContentDisposition(contentDisposition) {
+        if (contentDisposition) {
+            // Prefer filename* (RFC 5987 extended notation) - supports Unicode via percent-encoding
+            const extendedMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
+            if (extendedMatch) {
+                return decodeURIComponent(extendedMatch[1]);
+            }
+            // Fall back to plain filename=
+            const simpleMatch = contentDisposition.match(/filename=(?:(['"])(.*?)\1|([^;\s]*))/i);
+            if (simpleMatch) {
+                return (simpleMatch[2] || simpleMatch[3] || '').trim();
+            }
+        }
+        return 'signed-artifact';
     }
     resolveOrCreateDirectory(directoryPath) {
         const workingDirectory = process.env.GITHUB_WORKSPACE;
@@ -257,6 +291,9 @@ class HelperInputOutput {
     }
     get serviceUnavailableTimeoutInSeconds() {
         return (0, utils_1.getInputNumber)('service-unavailable-timeout-in-seconds', { required: true });
+    }
+    get skipDecompress() {
+        return core.getInput('skip-decompress', { required: false }) === 'true';
     }
     setSignedArtifactDownloadUrl(url) {
         core.setOutput('signed-artifact-download-url', url);
@@ -14328,7 +14365,7 @@ class Task {
                 if (this.helperInputOutput.waitForCompletion) {
                     yield this.ensureSigningRequestCompleted(signingRequestId);
                     if (this.helperInputOutput.outputArtifactDirectory) {
-                        yield this.helperArtifactDownload.downloadSignedArtifact(this.urlBuilder.buildGetSignedArtifactUrl(signingRequestId));
+                        yield this.helperArtifactDownload.downloadSignedArtifact(this.urlBuilder.buildGetSignedArtifactUrl(signingRequestId), this.helperInputOutput.skipDecompress);
                     }
                 }
                 else {
@@ -14492,7 +14529,14 @@ class Task {
             core.debug(`Received response: ${response.status} ${response.statusText} from ${response.request.url}`);
             return response;
         }, error => {
-            core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            var _a;
+            // response is absent for network errors, timeouts, and connection failures
+            if (error.response) {
+                core.debug(`Received response: ${error.response.status} ${error.response.statusText}`);
+            }
+            else {
+                core.debug(`Request failed without a response: ${(_a = error.message) !== null && _a !== void 0 ? _a : error}`);
+            }
             return Promise.reject(error);
         });
         // original axiosRetry doesn't work for POST requests

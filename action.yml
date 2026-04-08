@@ -53,6 +53,10 @@ inputs:
   output-artifact-directory:
     description: 'Path where the signed artifact will be saved. If not specified, the task will not download the signed artifact from SignPath'
     required: false
+  skip-decompress:
+    description: 'If true, the signed artifact will be saved as-is (without extracting the archive) using the artifact''s original file name. If false (default), the archive will be extracted to the output-artifact-directory.'
+    default: "false"
+    required: false
 outputs:
   signing-request-id:
     description: 'The ID of the newly created signing request'
