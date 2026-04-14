@@ -14807,7 +14807,7 @@ function parseUseDefinedParameter(line) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.taskVersion = void 0;
-const taskVersion = '2.1.0';
+const taskVersion = '2.2.0';
 exports.taskVersion = taskVersion;
 
 
