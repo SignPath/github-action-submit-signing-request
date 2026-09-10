@@ -6,8 +6,8 @@ branding:
 description: 'Submits signing request to SignPath and downloads the signed artifact'
 inputs:
   connector-url:
-    description: 'GitHub Actions SignPath connector URL'
-    default: 'https://githubactions.connectors.signpath.io'
+    description: 'GitHub Actions Endpoint of the SignPath Pipeline Connector'
+    default: 'https://pipelineconnector.connectors.signpath.io/GitHubActions/GitHubCom'
     required: true
   api-token:
     description: 'SignPath REST API access token. Read more in the SignPath documentation: https://about.signpath.io/redirects/connectors/api-token'
