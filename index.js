@@ -15634,7 +15634,7 @@ class Task {
     submitSigningRequest() {
         return __awaiter(this, void 0, void 0, function* () {
             const submitSigningRequestUrl = this.urlBuilder.buildSubmitSigningRequestUrl();
-            core.info('Submitting the signing request to SignPath GitHub Actions connector...');
+            core.info('Submitting the signing request to the SignPath Pipeline Connector...');
             // prepare the payload
             const submitRequestPayload = this.buildSigningRequestPayload();
             // call the connector to submit the signing request
@@ -15654,7 +15654,7 @@ class Task {
                     // got validation errors from the connector
                     return connectorResponse;
                 }
-                core.error(`SignPath API call error: ${e.message}`);
+                core.error(`API call error: ${e.message}`);
                 throw new Error((0, utils_1.httpErrorResponseToText)(e));
             }))
                 .data;
@@ -15673,8 +15673,8 @@ class Task {
     checkCiSystemValidationResult(validationResult) {
         if (validationResult && validationResult.errors.length > 0) {
             // got validation errors from the connector
-            core.startGroup('CI system setup validation errors');
-            core.error(`Build artifact with id \"${this.helperInputOutput.githubArtifactId}\" cannot be signed because of continuous integration system setup validation errors:`);
+            core.startGroup('Build system validation errors');
+            core.error(`Build artifact with id \"${this.helperInputOutput.githubArtifactId}\" cannot be signed because of build system validation errors:`);
             validationResult.errors.forEach(validationError => {
                 core.error(`${validationError.error}`);
                 if (validationError.howToFix) {
@@ -15682,7 +15682,7 @@ class Task {
                 }
             });
             core.endGroup();
-            throw new Error("CI system validation failed.");
+            throw new Error("Build system validation failed.");
         }
     }
     // if auto-generated GitHub Actions token (secrets.GITHUB_TOKEN) is used for artifact download,
