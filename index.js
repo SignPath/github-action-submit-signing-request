@@ -45,50 +45,49 @@ const core = __importStar(__nccwpck_require__(255));
 const submit_signing_request_core_1 = __nccwpck_require__(415);
 class HelperInputOutput {
     get signPathConnectorUrl() {
-        return core.getInput('connector-url', { required: true });
+        return getRequiredInput('connector-url');
     }
     get githubArtifactId() {
-        return core.getInput('github-artifact-id', { required: true });
+        return getRequiredInput('github-artifact-id');
     }
     get outputArtifactDirectory() {
-        return core.getInput('output-artifact-directory', { required: false });
+        return core.getInput('output-artifact-directory');
     }
     get waitForCompletion() {
-        return core.getInput('wait-for-completion', { required: true }) === 'true';
+        return (0, submit_signing_request_core_1.parseBooleanInput)('wait-for-completion', getRequiredInput('wait-for-completion'));
     }
     get organizationId() {
-        return core.getInput('organization-id', { required: true });
+        return getRequiredInput('organization-id');
     }
     get signPathApiToken() {
-        return core.getInput('api-token', { required: true });
+        return getRequiredInput('api-token');
     }
     get projectSlug() {
-        return core.getInput('project-slug', { required: true });
+        return getRequiredInput('project-slug');
     }
     get gitHubToken() {
-        return core.getInput('github-token', { required: true });
+        return getRequiredInput('github-token');
     }
     get parameters() {
-        const value = core.getInput('parameters', { required: false });
-        return (0, submit_signing_request_core_1.parseUserDefinedParameters)(value);
+        return (0, submit_signing_request_core_1.parseUserDefinedParameters)(core.getInput('parameters'));
     }
     get signingPolicySlug() {
-        return core.getInput('signing-policy-slug', { required: true });
+        return getRequiredInput('signing-policy-slug');
     }
     get artifactConfigurationSlug() {
-        return core.getInput('artifact-configuration-slug', { required: false });
+        return core.getInput('artifact-configuration-slug');
     }
     get waitForCompletionTimeoutInSeconds() {
-        return getRequiredInputNumber('wait-for-completion-timeout-in-seconds');
+        return getRequiredNumberInput('wait-for-completion-timeout-in-seconds');
     }
     get downloadSignedArtifactTimeoutInSeconds() {
-        return getRequiredInputNumber('download-signed-artifact-timeout-in-seconds');
+        return getRequiredNumberInput('download-signed-artifact-timeout-in-seconds');
     }
     get serviceUnavailableTimeoutInSeconds() {
-        return getRequiredInputNumber('service-unavailable-timeout-in-seconds');
+        return getRequiredNumberInput('service-unavailable-timeout-in-seconds');
     }
     get skipDecompress() {
-        return core.getInput('skip-decompress', { required: false }) === 'true';
+        return (0, submit_signing_request_core_1.parseBooleanInput)('skip-decompress', core.getInput('skip-decompress'));
     }
     setSignedArtifactDownloadUrl(url) {
         core.setOutput('signed-artifact-download-url', url);
@@ -101,8 +100,11 @@ class HelperInputOutput {
     }
 }
 exports.HelperInputOutput = HelperInputOutput;
-function getRequiredInputNumber(name) {
-    return (0, submit_signing_request_core_1.parseRequiredNumberInput)(name, core.getInput(name, { required: true }));
+function getRequiredInput(name) {
+    return (0, submit_signing_request_core_1.parseRequiredInput)(name, core.getInput(name));
+}
+function getRequiredNumberInput(name) {
+    return (0, submit_signing_request_core_1.parseRequiredNumberInput)(name, core.getInput(name));
 }
 
 
@@ -3662,7 +3664,7 @@ exports.RequestTimeout = RequestTimeout;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseUserDefinedParameters = exports.parseRequiredNumberInput = exports.httpErrorResponseToText = exports.executeWithRetries = exports.SubmitSigningRequestWorkflow = exports.SignedArtifactDownloader = exports.retryPolicy = exports.HttpError = exports.HttpClient = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelError = exports.LogLevelDebug = exports.ConnectorUrlBuilder = exports.Config = void 0;
+exports.parseUserDefinedParameters = exports.parseRequiredNumberInput = exports.parseRequiredInput = exports.parseBooleanInput = exports.httpErrorResponseToText = exports.executeWithRetries = exports.buildUserAgent = exports.SubmitSigningRequestWorkflow = exports.SignedArtifactDownloader = exports.retryPolicy = exports.HttpError = exports.HttpClient = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelError = exports.LogLevelDebug = exports.ConnectorUrlBuilder = exports.Config = void 0;
 var config_1 = __nccwpck_require__(493);
 Object.defineProperty(exports, "Config", ({ enumerable: true, get: function () { return config_1.Config; } }));
 var connector_url_builder_1 = __nccwpck_require__(442);
@@ -3681,8 +3683,11 @@ Object.defineProperty(exports, "SignedArtifactDownloader", ({ enumerable: true, 
 var submit_signing_request_workflow_1 = __nccwpck_require__(831);
 Object.defineProperty(exports, "SubmitSigningRequestWorkflow", ({ enumerable: true, get: function () { return submit_signing_request_workflow_1.SubmitSigningRequestWorkflow; } }));
 var utils_1 = __nccwpck_require__(357);
+Object.defineProperty(exports, "buildUserAgent", ({ enumerable: true, get: function () { return utils_1.buildUserAgent; } }));
 Object.defineProperty(exports, "executeWithRetries", ({ enumerable: true, get: function () { return utils_1.executeWithRetries; } }));
 Object.defineProperty(exports, "httpErrorResponseToText", ({ enumerable: true, get: function () { return utils_1.httpErrorResponseToText; } }));
+Object.defineProperty(exports, "parseBooleanInput", ({ enumerable: true, get: function () { return utils_1.parseBooleanInput; } }));
+Object.defineProperty(exports, "parseRequiredInput", ({ enumerable: true, get: function () { return utils_1.parseRequiredInput; } }));
 Object.defineProperty(exports, "parseRequiredNumberInput", ({ enumerable: true, get: function () { return utils_1.parseRequiredNumberInput; } }));
 Object.defineProperty(exports, "parseUserDefinedParameters", ({ enumerable: true, get: function () { return utils_1.parseUserDefinedParameters; } }));
 
@@ -4015,9 +4020,12 @@ exports.SubmitSigningRequestWorkflow = SubmitSigningRequestWorkflow;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.executeWithRetries = executeWithRetries;
+exports.buildUserAgent = buildUserAgent;
 exports.formatDuration = formatDuration;
 exports.humanizeDuration = humanizeDuration;
+exports.parseRequiredInput = parseRequiredInput;
 exports.parseRequiredNumberInput = parseRequiredNumberInput;
+exports.parseBooleanInput = parseBooleanInput;
 exports.httpErrorResponseToText = httpErrorResponseToText;
 exports.parseUserDefinedParameters = parseUserDefinedParameters;
 async function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs, logger) {
@@ -4041,6 +4049,10 @@ async function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, ma
     }
     return result.result;
 }
+// e.g. "SignPath.SubmitSigningRequestGitHubAction/3.0.0 (NodeJS/v24.4.0; linux x64)"
+function buildUserAgent(product, version) {
+    return `${product}/${version} (NodeJS/${process.version}; ${process.platform} ${process.arch})`;
+}
 // formats a duration as hh:mm:ss, e.g. 00:10:00 for 10 minutes
 function formatDuration(durationMs) {
     const totalSeconds = Math.floor(Math.max(durationMs, 0) / 1000);
@@ -4060,15 +4072,29 @@ function humanizeDuration(durationMs) {
 function pluralize(count, unit) {
     return `${count} ${unit}${count === 1 ? '' : 's'}`;
 }
-function parseRequiredNumberInput(name, value) {
+function parseRequiredInput(name, value) {
     if (!value) {
         throw new Error(`Input ${name} is required`);
     }
-    const result = parseInt(value, 10);
+    return value;
+}
+function parseRequiredNumberInput(name, value) {
+    const result = parseInt(parseRequiredInput(name, value), 10);
     if (isNaN(result)) {
         throw new Error(`Input ${name} is not a number`);
     }
     return result;
+}
+// true and false in any casing, an input that is not set is false
+function parseBooleanInput(name, value) {
+    const normalizedValue = (value ?? '').toLowerCase();
+    if (normalizedValue === 'true') {
+        return true;
+    }
+    if (normalizedValue === 'false' || normalizedValue === '') {
+        return false;
+    }
+    throw new Error(`Input ${name} must be true or false`);
 }
 function httpErrorResponseToText(err) {
     const response = err.response;
@@ -5685,7 +5711,7 @@ class Task {
     constructor(helperInputOutput, config = new submit_signing_request_core_1.Config()) {
         this.helperInputOutput = helperInputOutput;
         this.config = config;
-        this.userAgent = `SignPath.SubmitSigningRequestGitHubAction/${version_1.taskVersion}(NodeJS/${process.version}; ${process.platform} ${process.arch})`;
+        this.userAgent = (0, submit_signing_request_core_1.buildUserAgent)('SignPath.SubmitSigningRequestGitHubAction', version_1.taskVersion);
     }
     async run() {
         try {
