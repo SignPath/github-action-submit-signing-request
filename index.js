@@ -1,2101 +1,6 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 150:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Config = void 0;
-class Config {
-    MinDelayBetweenSigningRequestStatusChecksInSeconds = 10; // start from 10 sec
-    MaxDelayBetweenSigningRequestStatusChecksInSeconds = 60 * 20; // check at least every 20 minutes
-}
-exports.Config = Config;
-
-
-/***/ }),
-
-/***/ 979:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ConnectorUrlBuilder = void 0;
-class ConnectorUrlBuilder {
-    connectorBaseUrl;
-    organizationId;
-    apiVersion = "1.0";
-    baseSigningRequestsRoute;
-    constructor(connectorBaseUrl, organizationId) {
-        this.connectorBaseUrl = connectorBaseUrl;
-        this.organizationId = organizationId;
-        this.connectorBaseUrl = this.trimSlash(this.connectorBaseUrl);
-        this.baseSigningRequestsRoute = `${this.connectorBaseUrl}/${encodeURIComponent(this.organizationId)}/SigningRequests`;
-    }
-    buildSubmitSigningRequestUrl() {
-        return `${this.baseSigningRequestsRoute}?api-version=${this.apiVersion}`;
-    }
-    buildGetSigningRequestStatusUrl(signingRequestId) {
-        return `${this.baseSigningRequestsRoute}/${encodeURIComponent(signingRequestId)}/Status?api-version=${this.apiVersion}`;
-    }
-    buildGetSignedArtifactUrl(signingRequestId) {
-        return `${this.baseSigningRequestsRoute}/${encodeURIComponent(signingRequestId)}/SignedArtifact?api-version=${this.apiVersion}`;
-    }
-    trimSlash(text) {
-        if (text && text[text.length - 1] === '/') {
-            return text.substring(0, text.length - 1);
-        }
-        return text;
-    }
-}
-exports.ConnectorUrlBuilder = ConnectorUrlBuilder;
-
-
-/***/ }),
-
-/***/ 661:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.LogLevelError = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelDebug = void 0;
-exports.LogLevelDebug = "Debug";
-exports.LogLevelInformation = "Information";
-exports.LogLevelWarning = "Warning";
-exports.LogLevelError = "Error";
-
-
-/***/ }),
-
-/***/ 487:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.HttpClient = exports.retryPolicy = exports.HttpError = void 0;
-const fs = __importStar(__nccwpck_require__(896));
-const stream_1 = __nccwpck_require__(203);
-const promises_1 = __nccwpck_require__(786);
-const http_error_1 = __nccwpck_require__(204);
-Object.defineProperty(exports, "HttpError", ({ enumerable: true, get: function () { return http_error_1.HttpError; } }));
-const request_timeout_1 = __nccwpck_require__(28);
-exports.retryPolicy = {
-    // the delays are powers of 2 * 100ms, with 20% jitter
-    // we want to cover 10 minutes of SignPath service unavailability
-    // so we need to do 12 retries
-    // sum of 2^1 + 2^2 + ... + 2^12 = 2^13 - 2 = 8190
-    // 8190 * 100ms = 819 seconds = 13.65 minutes
-    // 11 retries will not be enough to cover 10 minutes downtime
-    maxRetryCount: 12,
-    delayMs(retryNumber) {
-        const delay = Math.pow(2, retryNumber) * 100;
-        return delay + delay * 0.2 * Math.random();
-    }
-};
-const retryableStatusCodes = [429, 502, 503, 504];
-class HttpClient {
-    options;
-    constructor(options) {
-        this.options = options;
-    }
-    async getJson(url) {
-        return this.sendJson('GET', url, undefined);
-    }
-    async postJson(url, body) {
-        return this.sendJson('POST', url, JSON.stringify(body));
-    }
-    async getStream(url, timeoutMs) {
-        return this.executeWithRetries(timeoutMs, async (remainingTimeMs) => {
-            const { response, timeout } = await this.send('GET', url, undefined, remainingTimeMs);
-            // like before, downloading the body has its own timeout
-            timeout.start(timeoutMs);
-            return {
-                status: response.status,
-                headers: response.headers,
-                saveToFile: async (filePath) => {
-                    try {
-                        const writer = fs.createWriteStream(filePath);
-                        if (response.body) {
-                            await (0, promises_1.pipeline)(stream_1.Readable.fromWeb(response.body), writer);
-                        }
-                        else {
-                            writer.end();
-                        }
-                    }
-                    catch (err) {
-                        throw timeout.hasTimedOut ? this.timeoutError(timeoutMs) : err;
-                    }
-                    finally {
-                        timeout.clear();
-                    }
-                }
-            };
-        });
-    }
-    async sendJson(method, url, body) {
-        return this.executeWithRetries(this.options.timeoutMs, async (remainingTimeMs) => {
-            const { response, timeout } = await this.send(method, url, body, remainingTimeMs);
-            try {
-                return {
-                    status: response.status,
-                    headers: response.headers,
-                    data: parseResponseBody(await response.text())
-                };
-            }
-            catch (err) {
-                throw timeout.hasTimedOut ? this.timeoutError(remainingTimeMs) : this.networkError(err);
-            }
-            finally {
-                timeout.clear();
-            }
-        });
-    }
-    async executeWithRetries(timeoutMs, request) {
-        const deadline = Date.now() + timeoutMs;
-        let retryCount = 0;
-        while (true) {
-            try {
-                return await request(deadline - Date.now());
-            }
-            catch (err) {
-                if (retryCount >= exports.retryPolicy.maxRetryCount || !this.isRetryable(err)) {
-                    throw err;
-                }
-                retryCount++;
-                const delayMs = exports.retryPolicy.delayMs(retryCount);
-                if (deadline - Date.now() - delayMs <= 0) {
-                    // the retry would exceed the timeout
-                    throw err;
-                }
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
-        }
-    }
-    // sends the request and returns the response if it has a success status code, the body is not read yet
-    // throws an HttpError otherwise
-    async send(method, url, body, timeoutMs) {
-        const timeout = new request_timeout_1.RequestTimeout();
-        timeout.start(timeoutMs);
-        this.options.logger.debug(`Sending request: ${method} ${url}`);
-        let response;
-        try {
-            response = await fetch(url, {
-                method,
-                body,
-                headers: {
-                    'User-Agent': this.options.userAgent,
-                    'Authorization': `Bearer ${this.options.apiToken}`,
-                    'Accept': 'application/json, text/plain, */*',
-                    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
-                },
-                signal: timeout.signal
-            });
-        }
-        catch (err) {
-            timeout.clear();
-            const error = timeout.hasTimedOut ? this.timeoutError(timeoutMs) : this.networkError(err);
-            // response is absent for network errors, timeouts, and connection failures
-            this.options.logger.debug(`Request failed without a response: ${error.message}`);
-            throw error;
-        }
-        this.options.logger.debug(`Received response: ${response.status} ${response.statusText} from ${url}`);
-        if (!response.ok) {
-            let data;
-            try {
-                data = parseResponseBody(await response.text());
-            }
-            catch (err) {
-                throw timeout.hasTimedOut ? this.timeoutError(timeoutMs) : this.networkError(err);
-            }
-            finally {
-                timeout.clear();
-            }
-            throw new http_error_1.HttpError(`Request failed with status code ${response.status}`, { status: response.status, data });
-        }
-        return { response, timeout };
-    }
-    isRetryable(err) {
-        if (!(err instanceof http_error_1.HttpError) || err.isTimeout) {
-            return false;
-        }
-        if (!err.response) {
-            return err.isTransientNetworkError;
-        }
-        const status = err.response.status;
-        if (status === 429) {
-            this.options.logger.info('SignPath REST API encountered too many requests.');
-        }
-        else if (retryableStatusCodes.includes(status)) {
-            this.options.logger.info(`SignPath REST API is temporarily unavailable (server responded with ${status}).`);
-        }
-        return retryableStatusCodes.includes(status);
-    }
-    timeoutError(timeoutMs) {
-        return new http_error_1.HttpError(`timeout of ${Math.max(timeoutMs, 0)}ms exceeded`, undefined, true);
-    }
-    networkError(err) {
-        // fetch reports network errors as "TypeError: fetch failed", the actual error is in the cause
-        const cause = err?.cause;
-        const message = cause?.message || err?.message || String(err);
-        // only system errors (e.g. ECONNRESET) are retried, errors without a code are thrown by fetch for invalid requests (e.g. an invalid header value)
-        const code = cause?.code ?? err?.code;
-        const isTransient = typeof code === 'string' && !permanentNetworkErrorCodes.includes(code);
-        return new http_error_1.HttpError(message, undefined, false, isTransient);
-    }
-}
-exports.HttpClient = HttpClient;
-// network errors that will not go away by retrying: unknown host, unreachable network, invalid URL and TLS certificate errors
-// (the same as axios-retry, which was used before, see https://github.com/sindresorhus/is-retry-allowed)
-const permanentNetworkErrorCodes = [
-    'ENOTFOUND',
-    'ENETUNREACH',
-    'ERR_INVALID_URL',
-    'ERR_TLS_CERT_ALTNAME_INVALID',
-    'UNABLE_TO_GET_ISSUER_CERT',
-    'UNABLE_TO_GET_CRL',
-    'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
-    'UNABLE_TO_DECRYPT_CRL_SIGNATURE',
-    'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
-    'CERT_SIGNATURE_FAILURE',
-    'CRL_SIGNATURE_FAILURE',
-    'CERT_NOT_YET_VALID',
-    'CERT_HAS_EXPIRED',
-    'CRL_NOT_YET_VALID',
-    'CRL_HAS_EXPIRED',
-    'ERROR_IN_CERT_NOT_BEFORE_FIELD',
-    'ERROR_IN_CERT_NOT_AFTER_FIELD',
-    'ERROR_IN_CRL_LAST_UPDATE_FIELD',
-    'ERROR_IN_CRL_NEXT_UPDATE_FIELD',
-    'OUT_OF_MEM',
-    'DEPTH_ZERO_SELF_SIGNED_CERT',
-    'SELF_SIGNED_CERT_IN_CHAIN',
-    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-    'CERT_CHAIN_TOO_LONG',
-    'CERT_REVOKED',
-    'INVALID_CA',
-    'PATH_LENGTH_EXCEEDED',
-    'INVALID_PURPOSE',
-    'CERT_UNTRUSTED',
-    'CERT_REJECTED',
-    'HOSTNAME_MISMATCH'
-];
-// JSON responses are parsed, other responses are returned as text
-function parseResponseBody(text) {
-    if (!text) {
-        return text;
-    }
-    try {
-        return JSON.parse(text);
-    }
-    catch {
-        return text;
-    }
-}
-
-
-/***/ }),
-
-/***/ 204:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.HttpError = void 0;
-// error of an HTTP request: a non-success response, a timeout or a network error
-class HttpError extends Error {
-    response;
-    isTimeout;
-    isTransientNetworkError;
-    constructor(message, 
-    // only set when the server responded with a non-success status code
-    response, isTimeout = false, 
-    // only set for network errors that may succeed when retried (e.g. a reset connection, but not an unknown host)
-    isTransientNetworkError = false) {
-        super(message);
-        this.response = response;
-        this.isTimeout = isTimeout;
-        this.isTransientNetworkError = isTransientNetworkError;
-        this.name = 'HttpError';
-    }
-}
-exports.HttpError = HttpError;
-
-
-/***/ }),
-
-/***/ 28:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.RequestTimeout = void 0;
-// timeout of an HTTP request, which can be restarted for reading the response body
-class RequestTimeout {
-    controller = new AbortController();
-    timer;
-    timedOut = false;
-    get signal() {
-        return this.controller.signal;
-    }
-    get hasTimedOut() {
-        return this.timedOut;
-    }
-    start(timeoutMs) {
-        this.clear();
-        this.timer = setTimeout(() => {
-            this.timedOut = true;
-            this.controller.abort();
-        }, Math.max(timeoutMs, 0));
-        // a pending timeout must not keep the process alive
-        this.timer.unref();
-    }
-    clear() {
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = undefined;
-        }
-    }
-}
-exports.RequestTimeout = RequestTimeout;
-
-
-/***/ }),
-
-/***/ 590:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseUserDefinedParameters = exports.parseRequiredNumberInput = exports.httpErrorResponseToText = exports.executeWithRetries = exports.SubmitSigningRequestWorkflow = exports.SignedArtifactDownloader = exports.retryPolicy = exports.HttpError = exports.HttpClient = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelError = exports.LogLevelDebug = exports.ConnectorUrlBuilder = exports.Config = void 0;
-var config_1 = __nccwpck_require__(150);
-Object.defineProperty(exports, "Config", ({ enumerable: true, get: function () { return config_1.Config; } }));
-var connector_url_builder_1 = __nccwpck_require__(979);
-Object.defineProperty(exports, "ConnectorUrlBuilder", ({ enumerable: true, get: function () { return connector_url_builder_1.ConnectorUrlBuilder; } }));
-var submit_signing_request_result_1 = __nccwpck_require__(661);
-Object.defineProperty(exports, "LogLevelDebug", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelDebug; } }));
-Object.defineProperty(exports, "LogLevelError", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelError; } }));
-Object.defineProperty(exports, "LogLevelInformation", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelInformation; } }));
-Object.defineProperty(exports, "LogLevelWarning", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelWarning; } }));
-var http_client_1 = __nccwpck_require__(487);
-Object.defineProperty(exports, "HttpClient", ({ enumerable: true, get: function () { return http_client_1.HttpClient; } }));
-Object.defineProperty(exports, "HttpError", ({ enumerable: true, get: function () { return http_client_1.HttpError; } }));
-Object.defineProperty(exports, "retryPolicy", ({ enumerable: true, get: function () { return http_client_1.retryPolicy; } }));
-var signed_artifact_downloader_1 = __nccwpck_require__(543);
-Object.defineProperty(exports, "SignedArtifactDownloader", ({ enumerable: true, get: function () { return signed_artifact_downloader_1.SignedArtifactDownloader; } }));
-var submit_signing_request_workflow_1 = __nccwpck_require__(178);
-Object.defineProperty(exports, "SubmitSigningRequestWorkflow", ({ enumerable: true, get: function () { return submit_signing_request_workflow_1.SubmitSigningRequestWorkflow; } }));
-var utils_1 = __nccwpck_require__(31);
-Object.defineProperty(exports, "executeWithRetries", ({ enumerable: true, get: function () { return utils_1.executeWithRetries; } }));
-Object.defineProperty(exports, "httpErrorResponseToText", ({ enumerable: true, get: function () { return utils_1.httpErrorResponseToText; } }));
-Object.defineProperty(exports, "parseRequiredNumberInput", ({ enumerable: true, get: function () { return utils_1.parseRequiredNumberInput; } }));
-Object.defineProperty(exports, "parseUserDefinedParameters", ({ enumerable: true, get: function () { return utils_1.parseUserDefinedParameters; } }));
-
-
-/***/ }),
-
-/***/ 543:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.SignedArtifactDownloader = void 0;
-const fs = __importStar(__nccwpck_require__(896));
-const path = __importStar(__nccwpck_require__(928));
-const nodeStreamZip = __importStar(__nccwpck_require__(61));
-const utils_1 = __nccwpck_require__(31);
-const http_client_1 = __nccwpck_require__(487);
-class SignedArtifactDownloader {
-    httpClient;
-    logger;
-    constructor(httpClient, logger) {
-        this.httpClient = httpClient;
-        this.logger = logger;
-    }
-    async downloadSignedArtifact(artifactDownloadUrl, options) {
-        this.logger.info(`Signed artifact url ${artifactDownloadUrl}`);
-        const timeoutMs = options.timeoutInSeconds * 1000;
-        const response = await this.httpClient.getStream(artifactDownloadUrl, timeoutMs)
-            .catch((e) => {
-            throw new Error((0, utils_1.httpErrorResponseToText)(e));
-        });
-        const targetDirectory = this.resolveOrCreateDirectory(options.outputArtifactDirectory, options.workingDirectory);
-        this.logger.info(`The signed artifact is being downloaded from SignPath and will be saved to ${targetDirectory}`);
-        if (options.skipDecompress) {
-            const fileName = this.getFileNameFromContentDisposition(response.headers.get('content-disposition') ?? undefined);
-            const targetFile = path.join(targetDirectory, fileName);
-            this.logger.info(`Going to download signed artifact to ${targetFile}`);
-            await this.saveToFile(response, targetFile, timeoutMs);
-            this.logger.info(`The signed artifact has been successfully downloaded from SignPath and saved to ${targetFile}`);
-        }
-        else {
-            this.logger.info(`Going to download signed artifact`);
-            const tmpDir = fs.mkdtempSync(`${options.tempDirectory}${path.sep}`);
-            this.logger.debug(`Created temp directory ${tmpDir}`);
-            try {
-                // save the signed artifact to temp ZIP file
-                const tmpZipFile = path.join(tmpDir, 'artifact_tmp.zip');
-                await this.saveToFile(response, tmpZipFile, timeoutMs);
-                this.logger.debug(`The signed artifact ZIP has been saved to ${tmpZipFile}`);
-                this.logger.debug(`Extracting the signed artifact from ${tmpZipFile} to ${targetDirectory}`);
-                // unzip temp ZIP file to the targetDirectory
-                const zip = new nodeStreamZip.async({ file: tmpZipFile });
-                try {
-                    await zip.extract(null, targetDirectory);
-                }
-                finally {
-                    await zip.close();
-                }
-                this.logger.info(`The signed artifact has been successfully downloaded from SignPath and extracted to ${targetDirectory}`);
-            }
-            finally {
-                fs.rmSync(tmpDir, { recursive: true, force: true });
-                this.logger.debug(`Deleted temp directory ${tmpDir}`);
-            }
-        }
-    }
-    async saveToFile(response, filePath, timeoutMs) {
-        await response.saveToFile(filePath)
-            .catch((e) => {
-            if (e instanceof http_client_1.HttpError && e.isTimeout) {
-                throw new Error(`Timeout of ${timeoutMs}ms exceeded while downloading the signed artifact from SignPath`);
-            }
-            throw e;
-        });
-    }
-    getFileNameFromContentDisposition(contentDisposition) {
-        // only the file name is used, so the file cannot be written outside of the output artifact directory
-        const fileName = this.getRawFileNameFromContentDisposition(contentDisposition)?.split(/[\\/]/).pop();
-        return fileName && fileName !== '.' && fileName !== '..' ? fileName : 'signed-artifact';
-    }
-    getRawFileNameFromContentDisposition(contentDisposition) {
-        if (contentDisposition) {
-            // Prefer filename* (RFC 5987 extended notation) - supports Unicode via percent-encoding
-            const extendedMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
-            if (extendedMatch) {
-                try {
-                    return decodeURIComponent(extendedMatch[1]);
-                }
-                catch {
-                    // invalid percent-encoding, fall back to plain filename=
-                }
-            }
-            // Fall back to plain filename=
-            const simpleMatch = contentDisposition.match(/filename=(?:(['"])(.*?)\1|([^;\s]*))/i);
-            if (simpleMatch) {
-                return (simpleMatch[2] || simpleMatch[3] || '').trim();
-            }
-        }
-        return undefined;
-    }
-    resolveOrCreateDirectory(directoryPath, workingDirectory) {
-        const absolutePath = path.isAbsolute(directoryPath) ? directoryPath :
-            path.join(workingDirectory, directoryPath);
-        if (!fs.existsSync(absolutePath)) {
-            this.logger.info(`Directory "${absolutePath}" does not exist and will be created`);
-            fs.mkdirSync(absolutePath, { recursive: true });
-        }
-        return absolutePath;
-    }
-}
-exports.SignedArtifactDownloader = SignedArtifactDownloader;
-
-
-/***/ }),
-
-/***/ 178:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.SubmitSigningRequestWorkflow = void 0;
-const submit_signing_request_result_1 = __nccwpck_require__(661);
-const config_1 = __nccwpck_require__(150);
-const connector_url_builder_1 = __nccwpck_require__(979);
-const http_client_1 = __nccwpck_require__(487);
-const signed_artifact_downloader_1 = __nccwpck_require__(543);
-const utils_1 = __nccwpck_require__(31);
-// submits a signing request to the SignPath connector, waits for its completion and downloads the signed artifact
-// fails with an Error that contains the message to report to the user
-class SubmitSigningRequestWorkflow {
-    options;
-    ciSystem;
-    config;
-    urlBuilder;
-    httpClient;
-    logger;
-    constructor(options, ciSystem, config = new config_1.Config()) {
-        this.options = options;
-        this.ciSystem = ciSystem;
-        this.config = config;
-        this.logger = ciSystem.logger;
-        this.urlBuilder = new connector_url_builder_1.ConnectorUrlBuilder(options.connectorUrl, options.organizationId);
-        this.httpClient = new http_client_1.HttpClient({
-            userAgent: options.userAgent,
-            apiToken: options.apiToken,
-            timeoutMs: options.serviceUnavailableTimeoutInSeconds * 1000,
-            logger: this.logger
-        });
-    }
-    async run() {
-        const signingRequestId = await this.submitSigningRequest();
-        if (this.options.waitForCompletion) {
-            await this.ensureSigningRequestCompleted(signingRequestId);
-            if (this.options.outputArtifactDirectory) {
-                await new signed_artifact_downloader_1.SignedArtifactDownloader(this.httpClient, this.logger).downloadSignedArtifact(this.urlBuilder.buildGetSignedArtifactUrl(signingRequestId), {
-                    outputArtifactDirectory: this.options.outputArtifactDirectory,
-                    workingDirectory: this.options.workingDirectory,
-                    tempDirectory: this.options.tempDirectory,
-                    skipDecompress: this.options.skipDecompress,
-                    timeoutInSeconds: this.options.downloadSignedArtifactTimeoutInSeconds
-                });
-            }
-        }
-    }
-    async submitSigningRequest() {
-        const submitSigningRequestUrl = this.urlBuilder.buildSubmitSigningRequestUrl();
-        this.logger.info('Submitting the signing request to the SignPath connector...');
-        // call the connector to submit the signing request
-        const response = (await this.httpClient
-            .postJson(submitSigningRequestUrl, this.options.payload)
-            .catch((e) => {
-            if (e instanceof http_client_1.HttpError && e.response && e.response.status >= 400 && e.response.status < 500) {
-                const connectorResponse = e.response;
-                if (connectorResponse.data.error) {
-                    this.redirectConnectorLogsToBuildLog(connectorResponse.data.logs);
-                    // when an error occurs in the validator the error details are in the validationResult
-                    this.checkCiSystemValidationResult(connectorResponse.data.validationResult);
-                    throw new Error(connectorResponse.data.error);
-                }
-                // got validation errors from the connector
-                return connectorResponse;
-            }
-            this.logger.error(`API call error: ${e.message}`);
-            throw new Error((0, utils_1.httpErrorResponseToText)(e));
-        }))
-            .data;
-        this.checkResponseStructure(response);
-        this.redirectConnectorLogsToBuildLog(response.logs);
-        this.checkCiSystemValidationResult(response.validationResult);
-        this.logger.info(`SignPath signing request has been successfully submitted`);
-        this.logger.info(`The signing request id is ${response.signingRequestId}`);
-        this.logger.info(`You can view the signing request here: ${response.signingRequestUrl}`);
-        this.ciSystem.setOutputs({
-            signingRequestId: response.signingRequestId,
-            signingRequestWebUrl: response.signingRequestUrl,
-            signedArtifactDownloadUrl: this.urlBuilder.buildGetSignedArtifactUrl(response.signingRequestId)
-        });
-        return response.signingRequestId;
-    }
-    checkCiSystemValidationResult(validationResult) {
-        if (validationResult && validationResult.errors.length > 0) {
-            // got validation errors from the connector
-            this.logger.startGroup('Policy violation(s)');
-            this.logger.error(`Build artifact "${this.options.artifactIdOrName}" cannot be signed because of policy violations:`);
-            validationResult.errors.forEach(validationError => {
-                this.logger.error(`${validationError.error}`);
-                if (validationError.howToFix) {
-                    this.logger.info(validationError.howToFix);
-                }
-            });
-            this.logger.endGroup();
-            throw new Error('Policy evaluation failed');
-        }
-    }
-    async ensureSigningRequestCompleted(signingRequestId) {
-        // check for status update
-        this.logger.info(`Checking the signing request status...`);
-        const requestData = await ((0, utils_1.executeWithRetries)(async () => {
-            const signingRequestStatusDto = await (this.getSigningRequestStatus(signingRequestId)
-                .then(data => {
-                if (data && !data.isFinalStatus) {
-                    this.logger.info(`The signing request status is ${data.status}, which is not a final status; after a delay, we will check again...`);
-                    return { retry: true };
-                }
-                return { retry: false, result: data };
-            }));
-            return signingRequestStatusDto;
-        }, this.options.waitForCompletionTimeoutInSeconds * 1000, this.config.MinDelayBetweenSigningRequestStatusChecksInSeconds * 1000, this.config.MaxDelayBetweenSigningRequestStatusChecksInSeconds * 1000, this.logger));
-        this.logger.info(`Signing request status is ${requestData.status}`);
-        if (!requestData.isFinalStatus) {
-            const maxWaitingTime = (0, utils_1.formatDuration)(this.options.waitForCompletionTimeoutInSeconds * 1000);
-            this.logger.error(`We have exceeded the maximum waiting time, which is ${maxWaitingTime}, and the signing request is still not in a final state`);
-            throw new Error(`The signing request is not completed. The current status is "${requestData.status}"`);
-        }
-        else {
-            if (requestData.status !== "Completed") {
-                throw new Error(`The signing request is not completed. The final status is "${requestData.status}"`);
-            }
-        }
-        return requestData;
-    }
-    async getSigningRequestStatus(signingRequestId) {
-        const requestStatusUrl = this.urlBuilder.buildGetSigningRequestStatusUrl(signingRequestId);
-        const signingRequestStatusDto = await this.httpClient
-            .getJson(requestStatusUrl)
-            .catch((e) => {
-            this.logger.error(`SignPath API call error: ${e.message}`);
-            this.logger.error(`Signing request details API URL is: ${requestStatusUrl}`);
-            throw new Error((0, utils_1.httpErrorResponseToText)(e));
-        })
-            .then(response => response.data);
-        return signingRequestStatusDto;
-    }
-    checkResponseStructure(response) {
-        if (!response.validationResult && !response.signingRequestId) {
-            // if neither validationResult nor signingRequestId are present,
-            // then the response might be not from the connector
-            this.logger.error(`Unexpected response from the SignPath connector: ${JSON.stringify(response)}`);
-            throw new Error('SignPath signing request was not created. Please make sure that the selected connector endpoint is pointing to the SignPath connector.');
-        }
-    }
-    redirectConnectorLogsToBuildLog(logs) {
-        if (logs && logs.length > 0) {
-            logs.forEach(log => {
-                switch (log.level) {
-                    case submit_signing_request_result_1.LogLevelDebug:
-                        this.logger.debug(log.message);
-                        break;
-                    case submit_signing_request_result_1.LogLevelInformation:
-                        this.logger.info(log.message);
-                        break;
-                    case submit_signing_request_result_1.LogLevelWarning:
-                        this.logger.warning(log.message);
-                        break;
-                    case submit_signing_request_result_1.LogLevelError:
-                        this.logger.error(log.message);
-                        break;
-                    default:
-                        this.logger.info(`${log.level}:${log.message}`);
-                        break;
-                }
-            });
-        }
-    }
-}
-exports.SubmitSigningRequestWorkflow = SubmitSigningRequestWorkflow;
-
-
-/***/ }),
-
-/***/ 31:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.executeWithRetries = executeWithRetries;
-exports.formatDuration = formatDuration;
-exports.humanizeDuration = humanizeDuration;
-exports.parseRequiredNumberInput = parseRequiredNumberInput;
-exports.httpErrorResponseToText = httpErrorResponseToText;
-exports.parseUserDefinedParameters = parseUserDefinedParameters;
-async function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs, logger) {
-    const startTime = Date.now();
-    let delayMs = minDelayMs;
-    let result;
-    while (true) {
-        result = await promise();
-        if (result.retry === false) {
-            break;
-        }
-        else {
-            const totalWaitingTimeMs = Date.now() - startTime;
-            if (totalWaitingTimeMs > maxTotalWaitingTimeMs) {
-                throw new Error(`The operation has timed out after ${formatDuration(totalWaitingTimeMs)}`);
-            }
-            logger.info(`Next check in ${humanizeDuration(delayMs)}`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-            delayMs = Math.min(delayMs * 2, maxDelayMs);
-        }
-    }
-    return result.result;
-}
-// formats a duration as hh:mm:ss, e.g. 00:10:00 for 10 minutes
-function formatDuration(durationMs) {
-    const totalSeconds = Math.floor(Math.max(durationMs, 0) / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return [hours, minutes, seconds].map(part => part.toString().padStart(2, '0')).join(':');
-}
-// formats a duration in words, rounded to whole seconds or minutes, e.g. "5 seconds" or "2 minutes"
-function humanizeDuration(durationMs) {
-    const seconds = Math.round(Math.max(durationMs, 0) / 1000);
-    if (seconds < 60) {
-        return pluralize(seconds, 'second');
-    }
-    return pluralize(Math.round(seconds / 60), 'minute');
-}
-function pluralize(count, unit) {
-    return `${count} ${unit}${count === 1 ? '' : 's'}`;
-}
-function parseRequiredNumberInput(name, value) {
-    if (!value) {
-        throw new Error(`Input ${name} is required`);
-    }
-    const result = parseInt(value, 10);
-    if (isNaN(result)) {
-        throw new Error(`Input ${name} is not a number`);
-    }
-    return result;
-}
-function httpErrorResponseToText(err) {
-    const response = err.response;
-    if (response && response.data) {
-        // read error information from response
-        // data is a string
-        if (typeof (response.data) === "string") {
-            return response.data;
-        }
-        else if (typeof (response.data) === "object") {
-            return JSON.stringify(response.data);
-        }
-    }
-    return err.message;
-}
-function parseUserDefinedParameters(parameters) {
-    if (!parameters) {
-        return [];
-    }
-    // split value by lines
-    const parmLines = parameters.split('\n');
-    // for each line get param name and value
-    return parmLines.map(parseUseDefinedParameter)
-        .filter(p => p !== null)
-        .map(p => p);
-}
-function parseUseDefinedParameter(line) {
-    if (!line) {
-        return null;
-    }
-    const nameValueSeparatorIndex = line.indexOf(':');
-    if (nameValueSeparatorIndex === -1) {
-        throw new Error(`Invalid parameter line: ${line}`);
-    }
-    const name = line.substring(0, nameValueSeparatorIndex).trim();
-    const value = line.substring(nameValueSeparatorIndex + 1).trim();
-    // validate name
-    if (!name) {
-        throw new Error(`Parameter name cannot be empty. Line: ${line}`);
-    }
-    if (/[a-zA-Z0-9.\-_]+/.exec(name)?.[0] !== name) {
-        throw new Error(`Invalid parameter name: ${name}. Only alphanumeric characters, dots, dashes and underscores are allowed.`);
-    }
-    // validate value
-    let parsedValue;
-    try {
-        parsedValue = JSON.parse(value);
-    }
-    catch (e) {
-        throw new Error(`Invalid parameter value: ${value} - ${e}. Only valid JSON strings are allowed.`, { cause: e });
-    }
-    if (typeof (parsedValue) !== 'string') {
-        throw new Error(`Invalid parameter value: ${value}. Only valid JSON strings are allowed.`);
-    }
-    return { name, value: parsedValue };
-}
-
-
-/***/ }),
-
-/***/ 61:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-/**
- * @license node-stream-zip | (c) 2020 Antelle | https://github.com/antelle/node-stream-zip/blob/master/LICENSE
- * Portions copyright https://github.com/cthackers/adm-zip | https://raw.githubusercontent.com/cthackers/adm-zip/master/LICENSE
- */
-
-let fs = __nccwpck_require__(896);
-const util = __nccwpck_require__(23);
-const path = __nccwpck_require__(928);
-const events = __nccwpck_require__(434);
-const zlib = __nccwpck_require__(106);
-const stream = __nccwpck_require__(203);
-
-const consts = {
-    /* The local file header */
-    LOCHDR: 30, // LOC header size
-    LOCSIG: 0x04034b50, // "PK\003\004"
-    LOCVER: 4, // version needed to extract
-    LOCFLG: 6, // general purpose bit flag
-    LOCHOW: 8, // compression method
-    LOCTIM: 10, // modification time (2 bytes time, 2 bytes date)
-    LOCCRC: 14, // uncompressed file crc-32 value
-    LOCSIZ: 18, // compressed size
-    LOCLEN: 22, // uncompressed size
-    LOCNAM: 26, // filename length
-    LOCEXT: 28, // extra field length
-
-    /* The Data descriptor */
-    EXTSIG: 0x08074b50, // "PK\007\008"
-    EXTHDR: 16, // EXT header size
-    EXTCRC: 4, // uncompressed file crc-32 value
-    EXTSIZ: 8, // compressed size
-    EXTLEN: 12, // uncompressed size
-
-    /* The central directory file header */
-    CENHDR: 46, // CEN header size
-    CENSIG: 0x02014b50, // "PK\001\002"
-    CENVEM: 4, // version made by
-    CENVER: 6, // version needed to extract
-    CENFLG: 8, // encrypt, decrypt flags
-    CENHOW: 10, // compression method
-    CENTIM: 12, // modification time (2 bytes time, 2 bytes date)
-    CENCRC: 16, // uncompressed file crc-32 value
-    CENSIZ: 20, // compressed size
-    CENLEN: 24, // uncompressed size
-    CENNAM: 28, // filename length
-    CENEXT: 30, // extra field length
-    CENCOM: 32, // file comment length
-    CENDSK: 34, // volume number start
-    CENATT: 36, // internal file attributes
-    CENATX: 38, // external file attributes (host system dependent)
-    CENOFF: 42, // LOC header offset
-
-    /* The entries in the end of central directory */
-    ENDHDR: 22, // END header size
-    ENDSIG: 0x06054b50, // "PK\005\006"
-    ENDSIGFIRST: 0x50,
-    ENDSUB: 8, // number of entries on this disk
-    ENDTOT: 10, // total number of entries
-    ENDSIZ: 12, // central directory size in bytes
-    ENDOFF: 16, // offset of first CEN header
-    ENDCOM: 20, // zip file comment length
-    MAXFILECOMMENT: 0xffff,
-
-    /* The entries in the end of ZIP64 central directory locator */
-    ENDL64HDR: 20, // ZIP64 end of central directory locator header size
-    ENDL64SIG: 0x07064b50, // ZIP64 end of central directory locator signature
-    ENDL64SIGFIRST: 0x50,
-    ENDL64OFS: 8, // ZIP64 end of central directory offset
-
-    /* The entries in the end of ZIP64 central directory */
-    END64HDR: 56, // ZIP64 end of central directory header size
-    END64SIG: 0x06064b50, // ZIP64 end of central directory signature
-    END64SIGFIRST: 0x50,
-    END64SUB: 24, // number of entries on this disk
-    END64TOT: 32, // total number of entries
-    END64SIZ: 40,
-    END64OFF: 48,
-
-    /* Compression methods */
-    STORED: 0, // no compression
-    SHRUNK: 1, // shrunk
-    REDUCED1: 2, // reduced with compression factor 1
-    REDUCED2: 3, // reduced with compression factor 2
-    REDUCED3: 4, // reduced with compression factor 3
-    REDUCED4: 5, // reduced with compression factor 4
-    IMPLODED: 6, // imploded
-    // 7 reserved
-    DEFLATED: 8, // deflated
-    ENHANCED_DEFLATED: 9, // deflate64
-    PKWARE: 10, // PKWare DCL imploded
-    // 11 reserved
-    BZIP2: 12, //  compressed using BZIP2
-    // 13 reserved
-    LZMA: 14, // LZMA
-    // 15-17 reserved
-    IBM_TERSE: 18, // compressed using IBM TERSE
-    IBM_LZ77: 19, //IBM LZ77 z
-
-    /* General purpose bit flag */
-    FLG_ENC: 0, // encrypted file
-    FLG_COMP1: 1, // compression option
-    FLG_COMP2: 2, // compression option
-    FLG_DESC: 4, // data descriptor
-    FLG_ENH: 8, // enhanced deflation
-    FLG_STR: 16, // strong encryption
-    FLG_LNG: 1024, // language encoding
-    FLG_MSK: 4096, // mask header values
-    FLG_ENTRY_ENC: 1,
-
-    /* 4.5 Extensible data fields */
-    EF_ID: 0,
-    EF_SIZE: 2,
-
-    /* Header IDs */
-    ID_ZIP64: 0x0001,
-    ID_AVINFO: 0x0007,
-    ID_PFS: 0x0008,
-    ID_OS2: 0x0009,
-    ID_NTFS: 0x000a,
-    ID_OPENVMS: 0x000c,
-    ID_UNIX: 0x000d,
-    ID_FORK: 0x000e,
-    ID_PATCH: 0x000f,
-    ID_X509_PKCS7: 0x0014,
-    ID_X509_CERTID_F: 0x0015,
-    ID_X509_CERTID_C: 0x0016,
-    ID_STRONGENC: 0x0017,
-    ID_RECORD_MGT: 0x0018,
-    ID_X509_PKCS7_RL: 0x0019,
-    ID_IBM1: 0x0065,
-    ID_IBM2: 0x0066,
-    ID_POSZIP: 0x4690,
-
-    EF_ZIP64_OR_32: 0xffffffff,
-    EF_ZIP64_OR_16: 0xffff,
-};
-
-const StreamZip = function (config) {
-    let fd, fileSize, chunkSize, op, centralDirectory, closed;
-    const ready = false,
-        that = this,
-        entries = config.storeEntries !== false ? {} : null,
-        fileName = config.file,
-        textDecoder = config.nameEncoding ? new TextDecoder(config.nameEncoding) : null;
-
-    open();
-
-    function open() {
-        if (config.fd) {
-            fd = config.fd;
-            readFile();
-        } else {
-            fs.open(fileName, 'r', (err, f) => {
-                if (err) {
-                    return that.emit('error', err);
-                }
-                fd = f;
-                readFile();
-            });
-        }
-    }
-
-    function readFile() {
-        fs.fstat(fd, (err, stat) => {
-            if (err) {
-                return that.emit('error', err);
-            }
-            fileSize = stat.size;
-            chunkSize = config.chunkSize || Math.round(fileSize / 1000);
-            chunkSize = Math.max(
-                Math.min(chunkSize, Math.min(128 * 1024, fileSize)),
-                Math.min(1024, fileSize)
-            );
-            readCentralDirectory();
-        });
-    }
-
-    function readUntilFoundCallback(err, bytesRead) {
-        if (err || !bytesRead) {
-            return that.emit('error', err || new Error('Archive read error'));
-        }
-        let pos = op.lastPos;
-        let bufferPosition = pos - op.win.position;
-        const buffer = op.win.buffer;
-        const minPos = op.minPos;
-        while (--pos >= minPos && --bufferPosition >= 0) {
-            if (buffer.length - bufferPosition >= 4 && buffer[bufferPosition] === op.firstByte) {
-                // quick check first signature byte
-                if (buffer.readUInt32LE(bufferPosition) === op.sig) {
-                    op.lastBufferPosition = bufferPosition;
-                    op.lastBytesRead = bytesRead;
-                    op.complete();
-                    return;
-                }
-            }
-        }
-        if (pos === minPos) {
-            return that.emit('error', new Error('Bad archive'));
-        }
-        op.lastPos = pos + 1;
-        op.chunkSize *= 2;
-        if (pos <= minPos) {
-            return that.emit('error', new Error('Bad archive'));
-        }
-        const expandLength = Math.min(op.chunkSize, pos - minPos);
-        op.win.expandLeft(expandLength, readUntilFoundCallback);
-    }
-
-    function readCentralDirectory() {
-        const totalReadLength = Math.min(consts.ENDHDR + consts.MAXFILECOMMENT, fileSize);
-        op = {
-            win: new FileWindowBuffer(fd),
-            totalReadLength,
-            minPos: fileSize - totalReadLength,
-            lastPos: fileSize,
-            chunkSize: Math.min(1024, chunkSize),
-            firstByte: consts.ENDSIGFIRST,
-            sig: consts.ENDSIG,
-            complete: readCentralDirectoryComplete,
-        };
-        op.win.read(fileSize - op.chunkSize, op.chunkSize, readUntilFoundCallback);
-    }
-
-    function readCentralDirectoryComplete() {
-        const buffer = op.win.buffer;
-        const pos = op.lastBufferPosition;
-        try {
-            centralDirectory = new CentralDirectoryHeader();
-            centralDirectory.read(buffer.slice(pos, pos + consts.ENDHDR));
-            centralDirectory.headerOffset = op.win.position + pos;
-            if (centralDirectory.commentLength) {
-                that.comment = buffer
-                    .slice(
-                        pos + consts.ENDHDR,
-                        pos + consts.ENDHDR + centralDirectory.commentLength
-                    )
-                    .toString();
-            } else {
-                that.comment = null;
-            }
-            that.entriesCount = centralDirectory.volumeEntries;
-            that.centralDirectory = centralDirectory;
-            if (
-                (centralDirectory.volumeEntries === consts.EF_ZIP64_OR_16 &&
-                    centralDirectory.totalEntries === consts.EF_ZIP64_OR_16) ||
-                centralDirectory.size === consts.EF_ZIP64_OR_32 ||
-                centralDirectory.offset === consts.EF_ZIP64_OR_32
-            ) {
-                readZip64CentralDirectoryLocator();
-            } else {
-                op = {};
-                readEntries();
-            }
-        } catch (err) {
-            that.emit('error', err);
-        }
-    }
-
-    function readZip64CentralDirectoryLocator() {
-        const length = consts.ENDL64HDR;
-        if (op.lastBufferPosition > length) {
-            op.lastBufferPosition -= length;
-            readZip64CentralDirectoryLocatorComplete();
-        } else {
-            op = {
-                win: op.win,
-                totalReadLength: length,
-                minPos: op.win.position - length,
-                lastPos: op.win.position,
-                chunkSize: op.chunkSize,
-                firstByte: consts.ENDL64SIGFIRST,
-                sig: consts.ENDL64SIG,
-                complete: readZip64CentralDirectoryLocatorComplete,
-            };
-            op.win.read(op.lastPos - op.chunkSize, op.chunkSize, readUntilFoundCallback);
-        }
-    }
-
-    function readZip64CentralDirectoryLocatorComplete() {
-        const buffer = op.win.buffer;
-        const locHeader = new CentralDirectoryLoc64Header();
-        locHeader.read(
-            buffer.slice(op.lastBufferPosition, op.lastBufferPosition + consts.ENDL64HDR)
-        );
-        const readLength = fileSize - locHeader.headerOffset;
-        op = {
-            win: op.win,
-            totalReadLength: readLength,
-            minPos: locHeader.headerOffset,
-            lastPos: op.lastPos,
-            chunkSize: op.chunkSize,
-            firstByte: consts.END64SIGFIRST,
-            sig: consts.END64SIG,
-            complete: readZip64CentralDirectoryComplete,
-        };
-        op.win.read(fileSize - op.chunkSize, op.chunkSize, readUntilFoundCallback);
-    }
-
-    function readZip64CentralDirectoryComplete() {
-        const buffer = op.win.buffer;
-        const zip64cd = new CentralDirectoryZip64Header();
-        zip64cd.read(buffer.slice(op.lastBufferPosition, op.lastBufferPosition + consts.END64HDR));
-        that.centralDirectory.volumeEntries = zip64cd.volumeEntries;
-        that.centralDirectory.totalEntries = zip64cd.totalEntries;
-        that.centralDirectory.size = zip64cd.size;
-        that.centralDirectory.offset = zip64cd.offset;
-        that.entriesCount = zip64cd.volumeEntries;
-        op = {};
-        readEntries();
-    }
-
-    function readEntries() {
-        op = {
-            win: new FileWindowBuffer(fd),
-            pos: centralDirectory.offset,
-            chunkSize,
-            entriesLeft: centralDirectory.volumeEntries,
-        };
-        op.win.read(op.pos, Math.min(chunkSize, fileSize - op.pos), readEntriesCallback);
-    }
-
-    function readEntriesCallback(err, bytesRead) {
-        if (err || !bytesRead) {
-            return that.emit('error', err || new Error('Entries read error'));
-        }
-        let bufferPos = op.pos - op.win.position;
-        let entry = op.entry;
-        const buffer = op.win.buffer;
-        const bufferLength = buffer.length;
-        try {
-            while (op.entriesLeft > 0) {
-                if (!entry) {
-                    entry = new ZipEntry();
-                    entry.readHeader(buffer, bufferPos);
-                    entry.headerOffset = op.win.position + bufferPos;
-                    op.entry = entry;
-                    op.pos += consts.CENHDR;
-                    bufferPos += consts.CENHDR;
-                }
-                const entryHeaderSize = entry.fnameLen + entry.extraLen + entry.comLen;
-                const advanceBytes = entryHeaderSize + (op.entriesLeft > 1 ? consts.CENHDR : 0);
-                if (bufferLength - bufferPos < advanceBytes) {
-                    op.win.moveRight(chunkSize, readEntriesCallback, bufferPos);
-                    op.move = true;
-                    return;
-                }
-                entry.read(buffer, bufferPos, textDecoder);
-                if (!config.skipEntryNameValidation) {
-                    entry.validateName();
-                }
-                if (entries) {
-                    entries[entry.name] = entry;
-                }
-                that.emit('entry', entry);
-                op.entry = entry = null;
-                op.entriesLeft--;
-                op.pos += entryHeaderSize;
-                bufferPos += entryHeaderSize;
-            }
-            that.emit('ready');
-        } catch (err) {
-            that.emit('error', err);
-        }
-    }
-
-    function checkEntriesExist() {
-        if (!entries) {
-            throw new Error('storeEntries disabled');
-        }
-    }
-
-    Object.defineProperty(this, 'ready', {
-        get() {
-            return ready;
-        },
-    });
-
-    this.entry = function (name) {
-        checkEntriesExist();
-        return entries[name];
-    };
-
-    this.entries = function () {
-        checkEntriesExist();
-        return entries;
-    };
-
-    this.stream = function (entry, callback) {
-        return this.openEntry(
-            entry,
-            (err, entry) => {
-                if (err) {
-                    return callback(err);
-                }
-                const offset = dataOffset(entry);
-                let entryStream = new EntryDataReaderStream(fd, offset, entry.compressedSize);
-                if (entry.method === consts.STORED) {
-                    // nothing to do
-                } else if (entry.method === consts.DEFLATED) {
-                    entryStream = entryStream.pipe(zlib.createInflateRaw());
-                } else {
-                    return callback(new Error('Unknown compression method: ' + entry.method));
-                }
-                if (canVerifyCrc(entry)) {
-                    entryStream = entryStream.pipe(
-                        new EntryVerifyStream(entryStream, entry.crc, entry.size)
-                    );
-                }
-                callback(null, entryStream);
-            },
-            false
-        );
-    };
-
-    this.entryDataSync = function (entry) {
-        let err = null;
-        this.openEntry(
-            entry,
-            (e, en) => {
-                err = e;
-                entry = en;
-            },
-            true
-        );
-        if (err) {
-            throw err;
-        }
-        let data = Buffer.alloc(entry.compressedSize);
-        new FsRead(fd, data, 0, entry.compressedSize, dataOffset(entry), (e) => {
-            err = e;
-        }).read(true);
-        if (err) {
-            throw err;
-        }
-        if (entry.method === consts.STORED) {
-            // nothing to do
-        } else if (entry.method === consts.DEFLATED || entry.method === consts.ENHANCED_DEFLATED) {
-            data = zlib.inflateRawSync(data);
-        } else {
-            throw new Error('Unknown compression method: ' + entry.method);
-        }
-        if (data.length !== entry.size) {
-            throw new Error('Invalid size');
-        }
-        if (canVerifyCrc(entry)) {
-            const verify = new CrcVerify(entry.crc, entry.size);
-            verify.data(data);
-        }
-        return data;
-    };
-
-    this.openEntry = function (entry, callback, sync) {
-        if (typeof entry === 'string') {
-            checkEntriesExist();
-            entry = entries[entry];
-            if (!entry) {
-                return callback(new Error('Entry not found'));
-            }
-        }
-        if (!entry.isFile) {
-            return callback(new Error('Entry is not file'));
-        }
-        if (!fd) {
-            return callback(new Error('Archive closed'));
-        }
-        const buffer = Buffer.alloc(consts.LOCHDR);
-        new FsRead(fd, buffer, 0, buffer.length, entry.offset, (err) => {
-            if (err) {
-                return callback(err);
-            }
-            let readEx;
-            try {
-                entry.readDataHeader(buffer);
-                if (entry.encrypted) {
-                    readEx = new Error('Entry encrypted');
-                }
-            } catch (ex) {
-                readEx = ex;
-            }
-            callback(readEx, entry);
-        }).read(sync);
-    };
-
-    function dataOffset(entry) {
-        return entry.offset + consts.LOCHDR + entry.fnameLen + entry.extraLen;
-    }
-
-    function canVerifyCrc(entry) {
-        // if bit 3 (0x08) of the general-purpose flags field is set, then the CRC-32 and file sizes are not known when the header is written
-        return (entry.flags & 0x8) !== 0x8;
-    }
-
-    function extract(entry, outPath, callback) {
-        that.stream(entry, (err, stm) => {
-            if (err) {
-                callback(err);
-            } else {
-                let fsStm, errThrown;
-                stm.on('error', (err) => {
-                    errThrown = err;
-                    if (fsStm) {
-                        stm.unpipe(fsStm);
-                        fsStm.close(() => {
-                            callback(err);
-                        });
-                    }
-                });
-                fs.open(outPath, 'w', (err, fdFile) => {
-                    if (err) {
-                        return callback(err);
-                    }
-                    if (errThrown) {
-                        fs.close(fd, () => {
-                            callback(errThrown);
-                        });
-                        return;
-                    }
-                    fsStm = fs.createWriteStream(outPath, { fd: fdFile });
-                    fsStm.on('finish', () => {
-                        that.emit('extract', entry, outPath);
-                        if (!errThrown) {
-                            callback();
-                        }
-                    });
-                    stm.pipe(fsStm);
-                });
-            }
-        });
-    }
-
-    function createDirectories(baseDir, dirs, callback) {
-        if (!dirs.length) {
-            return callback();
-        }
-        let dir = dirs.shift();
-        dir = path.join(baseDir, path.join(...dir));
-        fs.mkdir(dir, { recursive: true }, (err) => {
-            if (err && err.code !== 'EEXIST') {
-                return callback(err);
-            }
-            createDirectories(baseDir, dirs, callback);
-        });
-    }
-
-    function extractFiles(baseDir, baseRelPath, files, callback, extractedCount) {
-        if (!files.length) {
-            return callback(null, extractedCount);
-        }
-        const file = files.shift();
-        const targetPath = path.join(baseDir, file.name.replace(baseRelPath, ''));
-        extract(file, targetPath, (err) => {
-            if (err) {
-                return callback(err, extractedCount);
-            }
-            extractFiles(baseDir, baseRelPath, files, callback, extractedCount + 1);
-        });
-    }
-
-    this.extract = function (entry, outPath, callback) {
-        let entryName = entry || '';
-        if (typeof entry === 'string') {
-            entry = this.entry(entry);
-            if (entry) {
-                entryName = entry.name;
-            } else {
-                if (entryName.length && entryName[entryName.length - 1] !== '/') {
-                    entryName += '/';
-                }
-            }
-        }
-        if (!entry || entry.isDirectory) {
-            const files = [],
-                dirs = [],
-                allDirs = {};
-            for (const e in entries) {
-                if (
-                    Object.prototype.hasOwnProperty.call(entries, e) &&
-                    e.lastIndexOf(entryName, 0) === 0
-                ) {
-                    let relPath = e.replace(entryName, '');
-                    const childEntry = entries[e];
-                    if (childEntry.isFile) {
-                        files.push(childEntry);
-                        relPath = path.dirname(relPath);
-                    }
-                    if (relPath && !allDirs[relPath] && relPath !== '.') {
-                        allDirs[relPath] = true;
-                        let parts = relPath.split('/').filter((f) => {
-                            return f;
-                        });
-                        if (parts.length) {
-                            dirs.push(parts);
-                        }
-                        while (parts.length > 1) {
-                            parts = parts.slice(0, parts.length - 1);
-                            const partsPath = parts.join('/');
-                            if (allDirs[partsPath] || partsPath === '.') {
-                                break;
-                            }
-                            allDirs[partsPath] = true;
-                            dirs.push(parts);
-                        }
-                    }
-                }
-            }
-            dirs.sort((x, y) => {
-                return x.length - y.length;
-            });
-            if (dirs.length) {
-                createDirectories(outPath, dirs, (err) => {
-                    if (err) {
-                        callback(err);
-                    } else {
-                        extractFiles(outPath, entryName, files, callback, 0);
-                    }
-                });
-            } else {
-                extractFiles(outPath, entryName, files, callback, 0);
-            }
-        } else {
-            fs.stat(outPath, (err, stat) => {
-                if (stat && stat.isDirectory()) {
-                    extract(entry, path.join(outPath, path.basename(entry.name)), callback);
-                } else {
-                    extract(entry, outPath, callback);
-                }
-            });
-        }
-    };
-
-    this.close = function (callback) {
-        if (closed || !fd) {
-            closed = true;
-            if (callback) {
-                callback();
-            }
-        } else {
-            closed = true;
-            fs.close(fd, (err) => {
-                fd = null;
-                if (callback) {
-                    callback(err);
-                }
-            });
-        }
-    };
-
-    const originalEmit = events.EventEmitter.prototype.emit;
-    this.emit = function (...args) {
-        if (!closed) {
-            return originalEmit.call(this, ...args);
-        }
-    };
-};
-
-StreamZip.setFs = function (customFs) {
-    fs = customFs;
-};
-
-StreamZip.debugLog = (...args) => {
-    if (StreamZip.debug) {
-        // eslint-disable-next-line no-console
-        console.log(...args);
-    }
-};
-
-util.inherits(StreamZip, events.EventEmitter);
-
-const propZip = Symbol('zip');
-
-StreamZip.async = class StreamZipAsync extends events.EventEmitter {
-    constructor(config) {
-        super();
-
-        const zip = new StreamZip(config);
-
-        zip.on('entry', (entry) => this.emit('entry', entry));
-        zip.on('extract', (entry, outPath) => this.emit('extract', entry, outPath));
-
-        this[propZip] = new Promise((resolve, reject) => {
-            zip.on('ready', () => {
-                zip.removeListener('error', reject);
-                resolve(zip);
-            });
-            zip.on('error', reject);
-        });
-    }
-
-    get entriesCount() {
-        return this[propZip].then((zip) => zip.entriesCount);
-    }
-
-    get comment() {
-        return this[propZip].then((zip) => zip.comment);
-    }
-
-    async entry(name) {
-        const zip = await this[propZip];
-        return zip.entry(name);
-    }
-
-    async entries() {
-        const zip = await this[propZip];
-        return zip.entries();
-    }
-
-    async stream(entry) {
-        const zip = await this[propZip];
-        return new Promise((resolve, reject) => {
-            zip.stream(entry, (err, stm) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(stm);
-                }
-            });
-        });
-    }
-
-    async entryData(entry) {
-        const stm = await this.stream(entry);
-        return new Promise((resolve, reject) => {
-            const data = [];
-            stm.on('data', (chunk) => data.push(chunk));
-            stm.on('end', () => {
-                resolve(Buffer.concat(data));
-            });
-            stm.on('error', (err) => {
-                stm.removeAllListeners('end');
-                reject(err);
-            });
-        });
-    }
-
-    async extract(entry, outPath) {
-        const zip = await this[propZip];
-        return new Promise((resolve, reject) => {
-            zip.extract(entry, outPath, (err, res) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(res);
-                }
-            });
-        });
-    }
-
-    async close() {
-        const zip = await this[propZip];
-        return new Promise((resolve, reject) => {
-            zip.close((err) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-        });
-    }
-};
-
-class CentralDirectoryHeader {
-    read(data) {
-        if (data.length !== consts.ENDHDR || data.readUInt32LE(0) !== consts.ENDSIG) {
-            throw new Error('Invalid central directory');
-        }
-        // number of entries on this volume
-        this.volumeEntries = data.readUInt16LE(consts.ENDSUB);
-        // total number of entries
-        this.totalEntries = data.readUInt16LE(consts.ENDTOT);
-        // central directory size in bytes
-        this.size = data.readUInt32LE(consts.ENDSIZ);
-        // offset of first CEN header
-        this.offset = data.readUInt32LE(consts.ENDOFF);
-        // zip file comment length
-        this.commentLength = data.readUInt16LE(consts.ENDCOM);
-    }
-}
-
-class CentralDirectoryLoc64Header {
-    read(data) {
-        if (data.length !== consts.ENDL64HDR || data.readUInt32LE(0) !== consts.ENDL64SIG) {
-            throw new Error('Invalid zip64 central directory locator');
-        }
-        // ZIP64 EOCD header offset
-        this.headerOffset = readUInt64LE(data, consts.ENDSUB);
-    }
-}
-
-class CentralDirectoryZip64Header {
-    read(data) {
-        if (data.length !== consts.END64HDR || data.readUInt32LE(0) !== consts.END64SIG) {
-            throw new Error('Invalid central directory');
-        }
-        // number of entries on this volume
-        this.volumeEntries = readUInt64LE(data, consts.END64SUB);
-        // total number of entries
-        this.totalEntries = readUInt64LE(data, consts.END64TOT);
-        // central directory size in bytes
-        this.size = readUInt64LE(data, consts.END64SIZ);
-        // offset of first CEN header
-        this.offset = readUInt64LE(data, consts.END64OFF);
-    }
-}
-
-class ZipEntry {
-    readHeader(data, offset) {
-        // data should be 46 bytes and start with "PK 01 02"
-        if (data.length < offset + consts.CENHDR || data.readUInt32LE(offset) !== consts.CENSIG) {
-            throw new Error('Invalid entry header');
-        }
-        // version made by
-        this.verMade = data.readUInt16LE(offset + consts.CENVEM);
-        // version needed to extract
-        this.version = data.readUInt16LE(offset + consts.CENVER);
-        // encrypt, decrypt flags
-        this.flags = data.readUInt16LE(offset + consts.CENFLG);
-        // compression method
-        this.method = data.readUInt16LE(offset + consts.CENHOW);
-        // modification time (2 bytes time, 2 bytes date)
-        const timebytes = data.readUInt16LE(offset + consts.CENTIM);
-        const datebytes = data.readUInt16LE(offset + consts.CENTIM + 2);
-        this.time = parseZipTime(timebytes, datebytes);
-
-        // uncompressed file crc-32 value
-        this.crc = data.readUInt32LE(offset + consts.CENCRC);
-        // compressed size
-        this.compressedSize = data.readUInt32LE(offset + consts.CENSIZ);
-        // uncompressed size
-        this.size = data.readUInt32LE(offset + consts.CENLEN);
-        // filename length
-        this.fnameLen = data.readUInt16LE(offset + consts.CENNAM);
-        // extra field length
-        this.extraLen = data.readUInt16LE(offset + consts.CENEXT);
-        // file comment length
-        this.comLen = data.readUInt16LE(offset + consts.CENCOM);
-        // volume number start
-        this.diskStart = data.readUInt16LE(offset + consts.CENDSK);
-        // internal file attributes
-        this.inattr = data.readUInt16LE(offset + consts.CENATT);
-        // external file attributes
-        this.attr = data.readUInt32LE(offset + consts.CENATX);
-        // LOC header offset
-        this.offset = data.readUInt32LE(offset + consts.CENOFF);
-    }
-
-    readDataHeader(data) {
-        // 30 bytes and should start with "PK\003\004"
-        if (data.readUInt32LE(0) !== consts.LOCSIG) {
-            throw new Error('Invalid local header');
-        }
-        // version needed to extract
-        this.version = data.readUInt16LE(consts.LOCVER);
-        // general purpose bit flag
-        this.flags = data.readUInt16LE(consts.LOCFLG);
-        // compression method
-        this.method = data.readUInt16LE(consts.LOCHOW);
-        // modification time (2 bytes time ; 2 bytes date)
-        const timebytes = data.readUInt16LE(consts.LOCTIM);
-        const datebytes = data.readUInt16LE(consts.LOCTIM + 2);
-        this.time = parseZipTime(timebytes, datebytes);
-
-        // uncompressed file crc-32 value
-        this.crc = data.readUInt32LE(consts.LOCCRC) || this.crc;
-        // compressed size
-        const compressedSize = data.readUInt32LE(consts.LOCSIZ);
-        if (
-            compressedSize &&
-            compressedSize !== consts.EF_ZIP64_OR_32 &&
-            compressedSize !== this.compressedSize
-        ) {
-            throw new Error('Invalid compressed size');
-        }
-        // uncompressed size
-        const size = data.readUInt32LE(consts.LOCLEN);
-        if (size && size !== consts.EF_ZIP64_OR_32 && size !== this.size) {
-            throw new Error('Invalid size');
-        }
-        // filename length
-        this.fnameLen = data.readUInt16LE(consts.LOCNAM);
-        // extra field length
-        this.extraLen = data.readUInt16LE(consts.LOCEXT);
-    }
-
-    read(data, offset, textDecoder) {
-        const nameData = data.slice(offset, (offset += this.fnameLen));
-        this.name = textDecoder
-            ? textDecoder.decode(new Uint8Array(nameData))
-            : nameData.toString('utf8');
-        const lastChar = data[offset - 1];
-        this.isDirectory = lastChar === 47 || lastChar === 92;
-
-        if (this.extraLen) {
-            this.readExtra(data, offset);
-            offset += this.extraLen;
-        }
-        this.comment = this.comLen ? data.slice(offset, offset + this.comLen).toString() : null;
-    }
-
-    validateName() {
-        if (/\\|^\w+:|^\/|(^|\/)\.\.(\/|$)/.test(this.name)) {
-            throw new Error('Malicious entry: ' + this.name);
-        }
-    }
-
-    readExtra(data, offset) {
-        let signature, size;
-        const maxPos = offset + this.extraLen;
-        while (offset < maxPos) {
-            signature = data.readUInt16LE(offset);
-            offset += 2;
-            size = data.readUInt16LE(offset);
-            offset += 2;
-            if (consts.ID_ZIP64 === signature) {
-                this.parseZip64Extra(data, offset, size);
-            }
-            offset += size;
-        }
-    }
-
-    parseZip64Extra(data, offset, length) {
-        if (length >= 8 && this.size === consts.EF_ZIP64_OR_32) {
-            this.size = readUInt64LE(data, offset);
-            offset += 8;
-            length -= 8;
-        }
-        if (length >= 8 && this.compressedSize === consts.EF_ZIP64_OR_32) {
-            this.compressedSize = readUInt64LE(data, offset);
-            offset += 8;
-            length -= 8;
-        }
-        if (length >= 8 && this.offset === consts.EF_ZIP64_OR_32) {
-            this.offset = readUInt64LE(data, offset);
-            offset += 8;
-            length -= 8;
-        }
-        if (length >= 4 && this.diskStart === consts.EF_ZIP64_OR_16) {
-            this.diskStart = data.readUInt32LE(offset);
-            // offset += 4; length -= 4;
-        }
-    }
-
-    get encrypted() {
-        return (this.flags & consts.FLG_ENTRY_ENC) === consts.FLG_ENTRY_ENC;
-    }
-
-    get isFile() {
-        return !this.isDirectory;
-    }
-}
-
-class FsRead {
-    constructor(fd, buffer, offset, length, position, callback) {
-        this.fd = fd;
-        this.buffer = buffer;
-        this.offset = offset;
-        this.length = length;
-        this.position = position;
-        this.callback = callback;
-        this.bytesRead = 0;
-        this.waiting = false;
-    }
-
-    read(sync) {
-        StreamZip.debugLog('read', this.position, this.bytesRead, this.length, this.offset);
-        this.waiting = true;
-        let err;
-        if (sync) {
-            let bytesRead = 0;
-            try {
-                bytesRead = fs.readSync(
-                    this.fd,
-                    this.buffer,
-                    this.offset + this.bytesRead,
-                    this.length - this.bytesRead,
-                    this.position + this.bytesRead
-                );
-            } catch (e) {
-                err = e;
-            }
-            this.readCallback(sync, err, err ? bytesRead : null);
-        } else {
-            fs.read(
-                this.fd,
-                this.buffer,
-                this.offset + this.bytesRead,
-                this.length - this.bytesRead,
-                this.position + this.bytesRead,
-                this.readCallback.bind(this, sync)
-            );
-        }
-    }
-
-    readCallback(sync, err, bytesRead) {
-        if (typeof bytesRead === 'number') {
-            this.bytesRead += bytesRead;
-        }
-        if (err || !bytesRead || this.bytesRead === this.length) {
-            this.waiting = false;
-            return this.callback(err, this.bytesRead);
-        } else {
-            this.read(sync);
-        }
-    }
-}
-
-class FileWindowBuffer {
-    constructor(fd) {
-        this.position = 0;
-        this.buffer = Buffer.alloc(0);
-        this.fd = fd;
-        this.fsOp = null;
-    }
-
-    checkOp() {
-        if (this.fsOp && this.fsOp.waiting) {
-            throw new Error('Operation in progress');
-        }
-    }
-
-    read(pos, length, callback) {
-        this.checkOp();
-        if (this.buffer.length < length) {
-            this.buffer = Buffer.alloc(length);
-        }
-        this.position = pos;
-        this.fsOp = new FsRead(this.fd, this.buffer, 0, length, this.position, callback).read();
-    }
-
-    expandLeft(length, callback) {
-        this.checkOp();
-        this.buffer = Buffer.concat([Buffer.alloc(length), this.buffer]);
-        this.position -= length;
-        if (this.position < 0) {
-            this.position = 0;
-        }
-        this.fsOp = new FsRead(this.fd, this.buffer, 0, length, this.position, callback).read();
-    }
-
-    expandRight(length, callback) {
-        this.checkOp();
-        const offset = this.buffer.length;
-        this.buffer = Buffer.concat([this.buffer, Buffer.alloc(length)]);
-        this.fsOp = new FsRead(
-            this.fd,
-            this.buffer,
-            offset,
-            length,
-            this.position + offset,
-            callback
-        ).read();
-    }
-
-    moveRight(length, callback, shift) {
-        this.checkOp();
-        if (shift) {
-            this.buffer.copy(this.buffer, 0, shift);
-        } else {
-            shift = 0;
-        }
-        this.position += shift;
-        this.fsOp = new FsRead(
-            this.fd,
-            this.buffer,
-            this.buffer.length - shift,
-            shift,
-            this.position + this.buffer.length - shift,
-            callback
-        ).read();
-    }
-}
-
-class EntryDataReaderStream extends stream.Readable {
-    constructor(fd, offset, length) {
-        super();
-        this.fd = fd;
-        this.offset = offset;
-        this.length = length;
-        this.pos = 0;
-        this.readCallback = this.readCallback.bind(this);
-    }
-
-    _read(n) {
-        const buffer = Buffer.alloc(Math.min(n, this.length - this.pos));
-        if (buffer.length) {
-            fs.read(this.fd, buffer, 0, buffer.length, this.offset + this.pos, this.readCallback);
-        } else {
-            this.push(null);
-        }
-    }
-
-    readCallback(err, bytesRead, buffer) {
-        this.pos += bytesRead;
-        if (err) {
-            this.emit('error', err);
-            this.push(null);
-        } else if (!bytesRead) {
-            this.push(null);
-        } else {
-            if (bytesRead !== buffer.length) {
-                buffer = buffer.slice(0, bytesRead);
-            }
-            this.push(buffer);
-        }
-    }
-}
-
-class EntryVerifyStream extends stream.Transform {
-    constructor(baseStm, crc, size) {
-        super();
-        this.verify = new CrcVerify(crc, size);
-        baseStm.on('error', (e) => {
-            this.emit('error', e);
-        });
-    }
-
-    _transform(data, encoding, callback) {
-        let err;
-        try {
-            this.verify.data(data);
-        } catch (e) {
-            err = e;
-        }
-        callback(err, data);
-    }
-}
-
-class CrcVerify {
-    constructor(crc, size) {
-        this.crc = crc;
-        this.size = size;
-        this.state = {
-            crc: ~0,
-            size: 0,
-        };
-    }
-
-    data(data) {
-        const crcTable = CrcVerify.getCrcTable();
-        let crc = this.state.crc;
-        let off = 0;
-        let len = data.length;
-        while (--len >= 0) {
-            crc = crcTable[(crc ^ data[off++]) & 0xff] ^ (crc >>> 8);
-        }
-        this.state.crc = crc;
-        this.state.size += data.length;
-        if (this.state.size >= this.size) {
-            const buf = Buffer.alloc(4);
-            buf.writeInt32LE(~this.state.crc & 0xffffffff, 0);
-            crc = buf.readUInt32LE(0);
-            if (crc !== this.crc) {
-                throw new Error('Invalid CRC');
-            }
-            if (this.state.size !== this.size) {
-                throw new Error('Invalid size');
-            }
-        }
-    }
-
-    static getCrcTable() {
-        let crcTable = CrcVerify.crcTable;
-        if (!crcTable) {
-            CrcVerify.crcTable = crcTable = [];
-            const b = Buffer.alloc(4);
-            for (let n = 0; n < 256; n++) {
-                let c = n;
-                for (let k = 8; --k >= 0; ) {
-                    if ((c & 1) !== 0) {
-                        c = 0xedb88320 ^ (c >>> 1);
-                    } else {
-                        c = c >>> 1;
-                    }
-                }
-                if (c < 0) {
-                    b.writeInt32LE(c, 0);
-                    c = b.readUInt32LE(0);
-                }
-                crcTable[n] = c;
-            }
-        }
-        return crcTable;
-    }
-}
-
-function parseZipTime(timebytes, datebytes) {
-    const timebits = toBits(timebytes, 16);
-    const datebits = toBits(datebytes, 16);
-
-    const mt = {
-        h: parseInt(timebits.slice(0, 5).join(''), 2),
-        m: parseInt(timebits.slice(5, 11).join(''), 2),
-        s: parseInt(timebits.slice(11, 16).join(''), 2) * 2,
-        Y: parseInt(datebits.slice(0, 7).join(''), 2) + 1980,
-        M: parseInt(datebits.slice(7, 11).join(''), 2),
-        D: parseInt(datebits.slice(11, 16).join(''), 2),
-    };
-    const dt_str = [mt.Y, mt.M, mt.D].join('-') + ' ' + [mt.h, mt.m, mt.s].join(':') + ' GMT+0';
-    return new Date(dt_str).getTime();
-}
-
-function toBits(dec, size) {
-    let b = (dec >>> 0).toString(2);
-    while (b.length < size) {
-        b = '0' + b;
-    }
-    return b.split('');
-}
-
-function readUInt64LE(buffer, offset) {
-    return buffer.readUInt32LE(offset + 4) * 0x0000000100000000 + buffer.readUInt32LE(offset);
-}
-
-module.exports = StreamZip;
-
-
-/***/ }),
-
 /***/ 754:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -2137,7 +42,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.HelperInputOutput = void 0;
 const core = __importStar(__nccwpck_require__(255));
-const submit_signing_request_core_1 = __nccwpck_require__(590);
+const submit_signing_request_core_1 = __nccwpck_require__(415);
 class HelperInputOutput {
     get signPathConnectorUrl() {
         return core.getInput('connector-url', { required: true });
@@ -2645,7 +550,7 @@ Object.defineProperty(exports, "markdownSummary", ({ enumerable: true, get: func
 /**
  * Path exports
  */
-var path_utils_1 = __nccwpck_require__(699);
+var path_utils_1 = __nccwpck_require__(80);
 Object.defineProperty(exports, "toPosixPath", ({ enumerable: true, get: function () { return path_utils_1.toPosixPath; } }));
 Object.defineProperty(exports, "toWin32Path", ({ enumerable: true, get: function () { return path_utils_1.toWin32Path; } }));
 Object.defineProperty(exports, "toPlatformPath", ({ enumerable: true, get: function () { return path_utils_1.toPlatformPath; } }));
@@ -2810,7 +715,7 @@ exports.OidcClient = OidcClient;
 
 /***/ }),
 
-/***/ 699:
+/***/ 80:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -5350,6 +3255,2101 @@ function copyFile(srcFile, destFile, force) {
 
 /***/ }),
 
+/***/ 493:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Config = void 0;
+class Config {
+    MinDelayBetweenSigningRequestStatusChecksInSeconds = 10; // start from 10 sec
+    MaxDelayBetweenSigningRequestStatusChecksInSeconds = 60 * 20; // check at least every 20 minutes
+}
+exports.Config = Config;
+
+
+/***/ }),
+
+/***/ 442:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ConnectorUrlBuilder = void 0;
+class ConnectorUrlBuilder {
+    connectorBaseUrl;
+    organizationId;
+    apiVersion = "1.0";
+    baseSigningRequestsRoute;
+    constructor(connectorBaseUrl, organizationId) {
+        this.connectorBaseUrl = connectorBaseUrl;
+        this.organizationId = organizationId;
+        this.connectorBaseUrl = this.trimSlash(this.connectorBaseUrl);
+        this.baseSigningRequestsRoute = `${this.connectorBaseUrl}/${encodeURIComponent(this.organizationId)}/SigningRequests`;
+    }
+    buildSubmitSigningRequestUrl() {
+        return `${this.baseSigningRequestsRoute}?api-version=${this.apiVersion}`;
+    }
+    buildGetSigningRequestStatusUrl(signingRequestId) {
+        return `${this.baseSigningRequestsRoute}/${encodeURIComponent(signingRequestId)}/Status?api-version=${this.apiVersion}`;
+    }
+    buildGetSignedArtifactUrl(signingRequestId) {
+        return `${this.baseSigningRequestsRoute}/${encodeURIComponent(signingRequestId)}/SignedArtifact?api-version=${this.apiVersion}`;
+    }
+    trimSlash(text) {
+        if (text && text[text.length - 1] === '/') {
+            return text.substring(0, text.length - 1);
+        }
+        return text;
+    }
+}
+exports.ConnectorUrlBuilder = ConnectorUrlBuilder;
+
+
+/***/ }),
+
+/***/ 738:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.LogLevelError = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelDebug = void 0;
+exports.LogLevelDebug = "Debug";
+exports.LogLevelInformation = "Information";
+exports.LogLevelWarning = "Warning";
+exports.LogLevelError = "Error";
+
+
+/***/ }),
+
+/***/ 112:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.HttpClient = exports.retryPolicy = exports.HttpError = void 0;
+const fs = __importStar(__nccwpck_require__(896));
+const stream_1 = __nccwpck_require__(203);
+const promises_1 = __nccwpck_require__(786);
+const http_error_1 = __nccwpck_require__(285);
+Object.defineProperty(exports, "HttpError", ({ enumerable: true, get: function () { return http_error_1.HttpError; } }));
+const request_timeout_1 = __nccwpck_require__(699);
+exports.retryPolicy = {
+    // the delays are powers of 2 * 100ms, with 20% jitter
+    // we want to cover 10 minutes of SignPath service unavailability
+    // so we need to do 12 retries
+    // sum of 2^1 + 2^2 + ... + 2^12 = 2^13 - 2 = 8190
+    // 8190 * 100ms = 819 seconds = 13.65 minutes
+    // 11 retries will not be enough to cover 10 minutes downtime
+    maxRetryCount: 12,
+    delayMs(retryNumber) {
+        const delay = Math.pow(2, retryNumber) * 100;
+        return delay + delay * 0.2 * Math.random();
+    }
+};
+const retryableStatusCodes = [429, 502, 503, 504];
+class HttpClient {
+    options;
+    constructor(options) {
+        this.options = options;
+    }
+    async getJson(url) {
+        return this.sendJson('GET', url, undefined);
+    }
+    async postJson(url, body) {
+        return this.sendJson('POST', url, JSON.stringify(body));
+    }
+    async getStream(url, timeoutMs) {
+        return this.executeWithRetries(timeoutMs, async (remainingTimeMs) => {
+            const { response, timeout } = await this.send('GET', url, undefined, remainingTimeMs);
+            // like before, downloading the body has its own timeout
+            timeout.start(timeoutMs);
+            return {
+                status: response.status,
+                headers: response.headers,
+                saveToFile: async (filePath) => {
+                    try {
+                        const writer = fs.createWriteStream(filePath);
+                        if (response.body) {
+                            await (0, promises_1.pipeline)(stream_1.Readable.fromWeb(response.body), writer);
+                        }
+                        else {
+                            writer.end();
+                        }
+                    }
+                    catch (err) {
+                        throw timeout.hasTimedOut ? this.timeoutError(timeoutMs) : err;
+                    }
+                    finally {
+                        timeout.clear();
+                    }
+                }
+            };
+        });
+    }
+    async sendJson(method, url, body) {
+        return this.executeWithRetries(this.options.timeoutMs, async (remainingTimeMs) => {
+            const { response, timeout } = await this.send(method, url, body, remainingTimeMs);
+            try {
+                return {
+                    status: response.status,
+                    headers: response.headers,
+                    data: parseResponseBody(await response.text())
+                };
+            }
+            catch (err) {
+                throw timeout.hasTimedOut ? this.timeoutError(remainingTimeMs) : this.networkError(err);
+            }
+            finally {
+                timeout.clear();
+            }
+        });
+    }
+    async executeWithRetries(timeoutMs, request) {
+        const deadline = Date.now() + timeoutMs;
+        let retryCount = 0;
+        while (true) {
+            try {
+                return await request(deadline - Date.now());
+            }
+            catch (err) {
+                if (retryCount >= exports.retryPolicy.maxRetryCount || !this.isRetryable(err)) {
+                    throw err;
+                }
+                retryCount++;
+                const delayMs = exports.retryPolicy.delayMs(retryCount);
+                if (deadline - Date.now() - delayMs <= 0) {
+                    // the retry would exceed the timeout
+                    throw err;
+                }
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+    }
+    // sends the request and returns the response if it has a success status code, the body is not read yet
+    // throws an HttpError otherwise
+    async send(method, url, body, timeoutMs) {
+        const timeout = new request_timeout_1.RequestTimeout();
+        timeout.start(timeoutMs);
+        this.options.logger.debug(`Sending request: ${method} ${url}`);
+        let response;
+        try {
+            response = await fetch(url, {
+                method,
+                body,
+                headers: {
+                    'User-Agent': this.options.userAgent,
+                    'Authorization': `Bearer ${this.options.apiToken}`,
+                    'Accept': 'application/json, text/plain, */*',
+                    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
+                },
+                signal: timeout.signal
+            });
+        }
+        catch (err) {
+            timeout.clear();
+            const error = timeout.hasTimedOut ? this.timeoutError(timeoutMs) : this.networkError(err);
+            // response is absent for network errors, timeouts, and connection failures
+            this.options.logger.debug(`Request failed without a response: ${error.message}`);
+            throw error;
+        }
+        this.options.logger.debug(`Received response: ${response.status} ${response.statusText} from ${url}`);
+        if (!response.ok) {
+            let data;
+            try {
+                data = parseResponseBody(await response.text());
+            }
+            catch (err) {
+                throw timeout.hasTimedOut ? this.timeoutError(timeoutMs) : this.networkError(err);
+            }
+            finally {
+                timeout.clear();
+            }
+            throw new http_error_1.HttpError(`Request failed with status code ${response.status}`, { status: response.status, data });
+        }
+        return { response, timeout };
+    }
+    isRetryable(err) {
+        if (!(err instanceof http_error_1.HttpError) || err.isTimeout) {
+            return false;
+        }
+        if (!err.response) {
+            return err.isTransientNetworkError;
+        }
+        const status = err.response.status;
+        if (status === 429) {
+            this.options.logger.info('SignPath REST API encountered too many requests.');
+        }
+        else if (retryableStatusCodes.includes(status)) {
+            this.options.logger.info(`SignPath REST API is temporarily unavailable (server responded with ${status}).`);
+        }
+        return retryableStatusCodes.includes(status);
+    }
+    timeoutError(timeoutMs) {
+        return new http_error_1.HttpError(`timeout of ${Math.max(timeoutMs, 0)}ms exceeded`, undefined, true);
+    }
+    networkError(err) {
+        // fetch reports network errors as "TypeError: fetch failed", the actual error is in the cause
+        const cause = err?.cause;
+        const message = cause?.message || err?.message || String(err);
+        // only system errors (e.g. ECONNRESET) are retried, errors without a code are thrown by fetch for invalid requests (e.g. an invalid header value)
+        const code = cause?.code ?? err?.code;
+        const isTransient = typeof code === 'string' && !permanentNetworkErrorCodes.includes(code);
+        return new http_error_1.HttpError(message, undefined, false, isTransient);
+    }
+}
+exports.HttpClient = HttpClient;
+// network errors that will not go away by retrying: unknown host, unreachable network, invalid URL and TLS certificate errors
+// (the same as axios-retry, which was used before, see https://github.com/sindresorhus/is-retry-allowed)
+const permanentNetworkErrorCodes = [
+    'ENOTFOUND',
+    'ENETUNREACH',
+    'ERR_INVALID_URL',
+    'ERR_TLS_CERT_ALTNAME_INVALID',
+    'UNABLE_TO_GET_ISSUER_CERT',
+    'UNABLE_TO_GET_CRL',
+    'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
+    'UNABLE_TO_DECRYPT_CRL_SIGNATURE',
+    'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
+    'CERT_SIGNATURE_FAILURE',
+    'CRL_SIGNATURE_FAILURE',
+    'CERT_NOT_YET_VALID',
+    'CERT_HAS_EXPIRED',
+    'CRL_NOT_YET_VALID',
+    'CRL_HAS_EXPIRED',
+    'ERROR_IN_CERT_NOT_BEFORE_FIELD',
+    'ERROR_IN_CERT_NOT_AFTER_FIELD',
+    'ERROR_IN_CRL_LAST_UPDATE_FIELD',
+    'ERROR_IN_CRL_NEXT_UPDATE_FIELD',
+    'OUT_OF_MEM',
+    'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'SELF_SIGNED_CERT_IN_CHAIN',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+    'CERT_CHAIN_TOO_LONG',
+    'CERT_REVOKED',
+    'INVALID_CA',
+    'PATH_LENGTH_EXCEEDED',
+    'INVALID_PURPOSE',
+    'CERT_UNTRUSTED',
+    'CERT_REJECTED',
+    'HOSTNAME_MISMATCH'
+];
+// JSON responses are parsed, other responses are returned as text
+function parseResponseBody(text) {
+    if (!text) {
+        return text;
+    }
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return text;
+    }
+}
+
+
+/***/ }),
+
+/***/ 285:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.HttpError = void 0;
+// error of an HTTP request: a non-success response, a timeout or a network error
+class HttpError extends Error {
+    response;
+    isTimeout;
+    isTransientNetworkError;
+    constructor(message, 
+    // only set when the server responded with a non-success status code
+    response, isTimeout = false, 
+    // only set for network errors that may succeed when retried (e.g. a reset connection, but not an unknown host)
+    isTransientNetworkError = false) {
+        super(message);
+        this.response = response;
+        this.isTimeout = isTimeout;
+        this.isTransientNetworkError = isTransientNetworkError;
+        this.name = 'HttpError';
+    }
+}
+exports.HttpError = HttpError;
+
+
+/***/ }),
+
+/***/ 699:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.RequestTimeout = void 0;
+// timeout of an HTTP request, which can be restarted for reading the response body
+class RequestTimeout {
+    controller = new AbortController();
+    timer;
+    timedOut = false;
+    get signal() {
+        return this.controller.signal;
+    }
+    get hasTimedOut() {
+        return this.timedOut;
+    }
+    start(timeoutMs) {
+        this.clear();
+        this.timer = setTimeout(() => {
+            this.timedOut = true;
+            this.controller.abort();
+        }, Math.max(timeoutMs, 0));
+        // a pending timeout must not keep the process alive
+        this.timer.unref();
+    }
+    clear() {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = undefined;
+        }
+    }
+}
+exports.RequestTimeout = RequestTimeout;
+
+
+/***/ }),
+
+/***/ 415:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseUserDefinedParameters = exports.parseRequiredNumberInput = exports.httpErrorResponseToText = exports.executeWithRetries = exports.SubmitSigningRequestWorkflow = exports.SignedArtifactDownloader = exports.retryPolicy = exports.HttpError = exports.HttpClient = exports.LogLevelWarning = exports.LogLevelInformation = exports.LogLevelError = exports.LogLevelDebug = exports.ConnectorUrlBuilder = exports.Config = void 0;
+var config_1 = __nccwpck_require__(493);
+Object.defineProperty(exports, "Config", ({ enumerable: true, get: function () { return config_1.Config; } }));
+var connector_url_builder_1 = __nccwpck_require__(442);
+Object.defineProperty(exports, "ConnectorUrlBuilder", ({ enumerable: true, get: function () { return connector_url_builder_1.ConnectorUrlBuilder; } }));
+var submit_signing_request_result_1 = __nccwpck_require__(738);
+Object.defineProperty(exports, "LogLevelDebug", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelDebug; } }));
+Object.defineProperty(exports, "LogLevelError", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelError; } }));
+Object.defineProperty(exports, "LogLevelInformation", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelInformation; } }));
+Object.defineProperty(exports, "LogLevelWarning", ({ enumerable: true, get: function () { return submit_signing_request_result_1.LogLevelWarning; } }));
+var http_client_1 = __nccwpck_require__(112);
+Object.defineProperty(exports, "HttpClient", ({ enumerable: true, get: function () { return http_client_1.HttpClient; } }));
+Object.defineProperty(exports, "HttpError", ({ enumerable: true, get: function () { return http_client_1.HttpError; } }));
+Object.defineProperty(exports, "retryPolicy", ({ enumerable: true, get: function () { return http_client_1.retryPolicy; } }));
+var signed_artifact_downloader_1 = __nccwpck_require__(948);
+Object.defineProperty(exports, "SignedArtifactDownloader", ({ enumerable: true, get: function () { return signed_artifact_downloader_1.SignedArtifactDownloader; } }));
+var submit_signing_request_workflow_1 = __nccwpck_require__(831);
+Object.defineProperty(exports, "SubmitSigningRequestWorkflow", ({ enumerable: true, get: function () { return submit_signing_request_workflow_1.SubmitSigningRequestWorkflow; } }));
+var utils_1 = __nccwpck_require__(357);
+Object.defineProperty(exports, "executeWithRetries", ({ enumerable: true, get: function () { return utils_1.executeWithRetries; } }));
+Object.defineProperty(exports, "httpErrorResponseToText", ({ enumerable: true, get: function () { return utils_1.httpErrorResponseToText; } }));
+Object.defineProperty(exports, "parseRequiredNumberInput", ({ enumerable: true, get: function () { return utils_1.parseRequiredNumberInput; } }));
+Object.defineProperty(exports, "parseUserDefinedParameters", ({ enumerable: true, get: function () { return utils_1.parseUserDefinedParameters; } }));
+
+
+/***/ }),
+
+/***/ 948:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SignedArtifactDownloader = void 0;
+const fs = __importStar(__nccwpck_require__(896));
+const path = __importStar(__nccwpck_require__(928));
+const nodeStreamZip = __importStar(__nccwpck_require__(869));
+const utils_1 = __nccwpck_require__(357);
+const http_client_1 = __nccwpck_require__(112);
+class SignedArtifactDownloader {
+    httpClient;
+    logger;
+    constructor(httpClient, logger) {
+        this.httpClient = httpClient;
+        this.logger = logger;
+    }
+    async downloadSignedArtifact(artifactDownloadUrl, options) {
+        this.logger.info(`Signed artifact url ${artifactDownloadUrl}`);
+        const timeoutMs = options.timeoutInSeconds * 1000;
+        const response = await this.httpClient.getStream(artifactDownloadUrl, timeoutMs)
+            .catch((e) => {
+            throw new Error((0, utils_1.httpErrorResponseToText)(e));
+        });
+        const targetDirectory = this.resolveOrCreateDirectory(options.outputArtifactDirectory, options.workingDirectory);
+        this.logger.info(`The signed artifact is being downloaded from SignPath and will be saved to ${targetDirectory}`);
+        if (options.skipDecompress) {
+            const fileName = this.getFileNameFromContentDisposition(response.headers.get('content-disposition') ?? undefined);
+            const targetFile = path.join(targetDirectory, fileName);
+            this.logger.info(`Going to download signed artifact to ${targetFile}`);
+            await this.saveToFile(response, targetFile, timeoutMs);
+            this.logger.info(`The signed artifact has been successfully downloaded from SignPath and saved to ${targetFile}`);
+        }
+        else {
+            this.logger.info(`Going to download signed artifact`);
+            const tmpDir = fs.mkdtempSync(`${options.tempDirectory}${path.sep}`);
+            this.logger.debug(`Created temp directory ${tmpDir}`);
+            try {
+                // save the signed artifact to temp ZIP file
+                const tmpZipFile = path.join(tmpDir, 'artifact_tmp.zip');
+                await this.saveToFile(response, tmpZipFile, timeoutMs);
+                this.logger.debug(`The signed artifact ZIP has been saved to ${tmpZipFile}`);
+                this.logger.debug(`Extracting the signed artifact from ${tmpZipFile} to ${targetDirectory}`);
+                // unzip temp ZIP file to the targetDirectory
+                const zip = new nodeStreamZip.async({ file: tmpZipFile });
+                try {
+                    await zip.extract(null, targetDirectory);
+                }
+                finally {
+                    await zip.close();
+                }
+                this.logger.info(`The signed artifact has been successfully downloaded from SignPath and extracted to ${targetDirectory}`);
+            }
+            finally {
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+                this.logger.debug(`Deleted temp directory ${tmpDir}`);
+            }
+        }
+    }
+    async saveToFile(response, filePath, timeoutMs) {
+        await response.saveToFile(filePath)
+            .catch((e) => {
+            if (e instanceof http_client_1.HttpError && e.isTimeout) {
+                throw new Error(`Timeout of ${timeoutMs}ms exceeded while downloading the signed artifact from SignPath`);
+            }
+            throw e;
+        });
+    }
+    getFileNameFromContentDisposition(contentDisposition) {
+        // only the file name is used, so the file cannot be written outside of the output artifact directory
+        const fileName = this.getRawFileNameFromContentDisposition(contentDisposition)?.split(/[\\/]/).pop();
+        return fileName && fileName !== '.' && fileName !== '..' ? fileName : 'signed-artifact';
+    }
+    getRawFileNameFromContentDisposition(contentDisposition) {
+        if (contentDisposition) {
+            // Prefer filename* (RFC 5987 extended notation) - supports Unicode via percent-encoding
+            const extendedMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
+            if (extendedMatch) {
+                try {
+                    return decodeURIComponent(extendedMatch[1]);
+                }
+                catch {
+                    // invalid percent-encoding, fall back to plain filename=
+                }
+            }
+            // Fall back to plain filename=
+            const simpleMatch = contentDisposition.match(/filename=(?:(['"])(.*?)\1|([^;\s]*))/i);
+            if (simpleMatch) {
+                return (simpleMatch[2] || simpleMatch[3] || '').trim();
+            }
+        }
+        return undefined;
+    }
+    resolveOrCreateDirectory(directoryPath, workingDirectory) {
+        const absolutePath = path.isAbsolute(directoryPath) ? directoryPath :
+            path.join(workingDirectory, directoryPath);
+        if (!fs.existsSync(absolutePath)) {
+            this.logger.info(`Directory "${absolutePath}" does not exist and will be created`);
+            fs.mkdirSync(absolutePath, { recursive: true });
+        }
+        return absolutePath;
+    }
+}
+exports.SignedArtifactDownloader = SignedArtifactDownloader;
+
+
+/***/ }),
+
+/***/ 831:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SubmitSigningRequestWorkflow = void 0;
+const submit_signing_request_result_1 = __nccwpck_require__(738);
+const config_1 = __nccwpck_require__(493);
+const connector_url_builder_1 = __nccwpck_require__(442);
+const http_client_1 = __nccwpck_require__(112);
+const signed_artifact_downloader_1 = __nccwpck_require__(948);
+const utils_1 = __nccwpck_require__(357);
+// submits a signing request to the SignPath connector, waits for its completion and downloads the signed artifact
+// fails with an Error that contains the message to report to the user
+class SubmitSigningRequestWorkflow {
+    options;
+    ciSystem;
+    config;
+    urlBuilder;
+    httpClient;
+    logger;
+    constructor(options, ciSystem, config = new config_1.Config()) {
+        this.options = options;
+        this.ciSystem = ciSystem;
+        this.config = config;
+        this.logger = ciSystem.logger;
+        this.urlBuilder = new connector_url_builder_1.ConnectorUrlBuilder(options.connectorUrl, options.organizationId);
+        this.httpClient = new http_client_1.HttpClient({
+            userAgent: options.userAgent,
+            apiToken: options.apiToken,
+            timeoutMs: options.serviceUnavailableTimeoutInSeconds * 1000,
+            logger: this.logger
+        });
+    }
+    async run() {
+        const signingRequestId = await this.submitSigningRequest();
+        if (this.options.waitForCompletion) {
+            await this.ensureSigningRequestCompleted(signingRequestId);
+            if (this.options.outputArtifactDirectory) {
+                await new signed_artifact_downloader_1.SignedArtifactDownloader(this.httpClient, this.logger).downloadSignedArtifact(this.urlBuilder.buildGetSignedArtifactUrl(signingRequestId), {
+                    outputArtifactDirectory: this.options.outputArtifactDirectory,
+                    workingDirectory: this.options.workingDirectory,
+                    tempDirectory: this.options.tempDirectory,
+                    skipDecompress: this.options.skipDecompress,
+                    timeoutInSeconds: this.options.downloadSignedArtifactTimeoutInSeconds
+                });
+            }
+        }
+    }
+    async submitSigningRequest() {
+        const submitSigningRequestUrl = this.urlBuilder.buildSubmitSigningRequestUrl();
+        this.logger.info('Submitting the signing request to the SignPath connector...');
+        // call the connector to submit the signing request
+        const response = (await this.httpClient
+            .postJson(submitSigningRequestUrl, this.options.payload)
+            .catch((e) => {
+            if (e instanceof http_client_1.HttpError && e.response && e.response.status >= 400 && e.response.status < 500) {
+                const connectorResponse = e.response;
+                if (connectorResponse.data.error) {
+                    this.redirectConnectorLogsToBuildLog(connectorResponse.data.logs);
+                    // when an error occurs in the validator the error details are in the validationResult
+                    this.checkCiSystemValidationResult(connectorResponse.data.validationResult);
+                    throw new Error(connectorResponse.data.error);
+                }
+                // got validation errors from the connector
+                return connectorResponse;
+            }
+            this.logger.error(`API call error: ${e.message}`);
+            throw new Error((0, utils_1.httpErrorResponseToText)(e));
+        }))
+            .data;
+        this.checkResponseStructure(response);
+        this.redirectConnectorLogsToBuildLog(response.logs);
+        this.checkCiSystemValidationResult(response.validationResult);
+        this.logger.info(`SignPath signing request has been successfully submitted`);
+        this.logger.info(`The signing request id is ${response.signingRequestId}`);
+        this.logger.info(`You can view the signing request here: ${response.signingRequestUrl}`);
+        this.ciSystem.setOutputs({
+            signingRequestId: response.signingRequestId,
+            signingRequestWebUrl: response.signingRequestUrl,
+            signedArtifactDownloadUrl: this.urlBuilder.buildGetSignedArtifactUrl(response.signingRequestId)
+        });
+        return response.signingRequestId;
+    }
+    checkCiSystemValidationResult(validationResult) {
+        if (validationResult && validationResult.errors.length > 0) {
+            // got validation errors from the connector
+            this.logger.startGroup('Policy violation(s)');
+            this.logger.error(`Build artifact "${this.options.artifactIdOrName}" cannot be signed because of policy violations:`);
+            validationResult.errors.forEach(validationError => {
+                this.logger.error(`${validationError.error}`);
+                if (validationError.howToFix) {
+                    this.logger.info(validationError.howToFix);
+                }
+            });
+            this.logger.endGroup();
+            throw new Error('Policy evaluation failed');
+        }
+    }
+    async ensureSigningRequestCompleted(signingRequestId) {
+        // check for status update
+        this.logger.info(`Checking the signing request status...`);
+        const requestData = await ((0, utils_1.executeWithRetries)(async () => {
+            const signingRequestStatusDto = await (this.getSigningRequestStatus(signingRequestId)
+                .then(data => {
+                if (data && !data.isFinalStatus) {
+                    this.logger.info(`The signing request status is ${data.status}, which is not a final status; after a delay, we will check again...`);
+                    return { retry: true };
+                }
+                return { retry: false, result: data };
+            }));
+            return signingRequestStatusDto;
+        }, this.options.waitForCompletionTimeoutInSeconds * 1000, this.config.MinDelayBetweenSigningRequestStatusChecksInSeconds * 1000, this.config.MaxDelayBetweenSigningRequestStatusChecksInSeconds * 1000, this.logger));
+        this.logger.info(`Signing request status is ${requestData.status}`);
+        if (!requestData.isFinalStatus) {
+            const maxWaitingTime = (0, utils_1.formatDuration)(this.options.waitForCompletionTimeoutInSeconds * 1000);
+            this.logger.error(`We have exceeded the maximum waiting time, which is ${maxWaitingTime}, and the signing request is still not in a final state`);
+            throw new Error(`The signing request is not completed. The current status is "${requestData.status}"`);
+        }
+        else {
+            if (requestData.status !== "Completed") {
+                throw new Error(`The signing request is not completed. The final status is "${requestData.status}"`);
+            }
+        }
+        return requestData;
+    }
+    async getSigningRequestStatus(signingRequestId) {
+        const requestStatusUrl = this.urlBuilder.buildGetSigningRequestStatusUrl(signingRequestId);
+        const signingRequestStatusDto = await this.httpClient
+            .getJson(requestStatusUrl)
+            .catch((e) => {
+            this.logger.error(`SignPath API call error: ${e.message}`);
+            this.logger.error(`Signing request details API URL is: ${requestStatusUrl}`);
+            throw new Error((0, utils_1.httpErrorResponseToText)(e));
+        })
+            .then(response => response.data);
+        return signingRequestStatusDto;
+    }
+    checkResponseStructure(response) {
+        if (!response.validationResult && !response.signingRequestId) {
+            // if neither validationResult nor signingRequestId are present,
+            // then the response might be not from the connector
+            this.logger.error(`Unexpected response from the SignPath connector: ${JSON.stringify(response)}`);
+            throw new Error('SignPath signing request was not created. Please make sure that the selected connector endpoint is pointing to the SignPath connector.');
+        }
+    }
+    redirectConnectorLogsToBuildLog(logs) {
+        if (logs && logs.length > 0) {
+            logs.forEach(log => {
+                switch (log.level) {
+                    case submit_signing_request_result_1.LogLevelDebug:
+                        this.logger.debug(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelInformation:
+                        this.logger.info(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelWarning:
+                        this.logger.warning(log.message);
+                        break;
+                    case submit_signing_request_result_1.LogLevelError:
+                        this.logger.error(log.message);
+                        break;
+                    default:
+                        this.logger.info(`${log.level}:${log.message}`);
+                        break;
+                }
+            });
+        }
+    }
+}
+exports.SubmitSigningRequestWorkflow = SubmitSigningRequestWorkflow;
+
+
+/***/ }),
+
+/***/ 357:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.executeWithRetries = executeWithRetries;
+exports.formatDuration = formatDuration;
+exports.humanizeDuration = humanizeDuration;
+exports.parseRequiredNumberInput = parseRequiredNumberInput;
+exports.httpErrorResponseToText = httpErrorResponseToText;
+exports.parseUserDefinedParameters = parseUserDefinedParameters;
+async function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs, logger) {
+    const startTime = Date.now();
+    let delayMs = minDelayMs;
+    let result;
+    while (true) {
+        result = await promise();
+        if (result.retry === false) {
+            break;
+        }
+        else {
+            const totalWaitingTimeMs = Date.now() - startTime;
+            if (totalWaitingTimeMs > maxTotalWaitingTimeMs) {
+                throw new Error(`The operation has timed out after ${formatDuration(totalWaitingTimeMs)}`);
+            }
+            logger.info(`Next check in ${humanizeDuration(delayMs)}`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            delayMs = Math.min(delayMs * 2, maxDelayMs);
+        }
+    }
+    return result.result;
+}
+// formats a duration as hh:mm:ss, e.g. 00:10:00 for 10 minutes
+function formatDuration(durationMs) {
+    const totalSeconds = Math.floor(Math.max(durationMs, 0) / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds].map(part => part.toString().padStart(2, '0')).join(':');
+}
+// formats a duration in words, rounded to whole seconds or minutes, e.g. "5 seconds" or "2 minutes"
+function humanizeDuration(durationMs) {
+    const seconds = Math.round(Math.max(durationMs, 0) / 1000);
+    if (seconds < 60) {
+        return pluralize(seconds, 'second');
+    }
+    return pluralize(Math.round(seconds / 60), 'minute');
+}
+function pluralize(count, unit) {
+    return `${count} ${unit}${count === 1 ? '' : 's'}`;
+}
+function parseRequiredNumberInput(name, value) {
+    if (!value) {
+        throw new Error(`Input ${name} is required`);
+    }
+    const result = parseInt(value, 10);
+    if (isNaN(result)) {
+        throw new Error(`Input ${name} is not a number`);
+    }
+    return result;
+}
+function httpErrorResponseToText(err) {
+    const response = err.response;
+    if (response && response.data) {
+        // read error information from response
+        // data is a string
+        if (typeof (response.data) === "string") {
+            return response.data;
+        }
+        else if (typeof (response.data) === "object") {
+            return JSON.stringify(response.data);
+        }
+    }
+    return err.message;
+}
+function parseUserDefinedParameters(parameters) {
+    if (!parameters) {
+        return [];
+    }
+    // split value by lines
+    const parmLines = parameters.split('\n');
+    // for each line get param name and value
+    return parmLines.map(parseUseDefinedParameter)
+        .filter(p => p !== null)
+        .map(p => p);
+}
+function parseUseDefinedParameter(line) {
+    if (!line) {
+        return null;
+    }
+    const nameValueSeparatorIndex = line.indexOf(':');
+    if (nameValueSeparatorIndex === -1) {
+        throw new Error(`Invalid parameter line: ${line}`);
+    }
+    const name = line.substring(0, nameValueSeparatorIndex).trim();
+    const value = line.substring(nameValueSeparatorIndex + 1).trim();
+    // validate name
+    if (!name) {
+        throw new Error(`Parameter name cannot be empty. Line: ${line}`);
+    }
+    if (/[a-zA-Z0-9.\-_]+/.exec(name)?.[0] !== name) {
+        throw new Error(`Invalid parameter name: ${name}. Only alphanumeric characters, dots, dashes and underscores are allowed.`);
+    }
+    // validate value
+    let parsedValue;
+    try {
+        parsedValue = JSON.parse(value);
+    }
+    catch (e) {
+        throw new Error(`Invalid parameter value: ${value} - ${e}. Only valid JSON strings are allowed.`, { cause: e });
+    }
+    if (typeof (parsedValue) !== 'string') {
+        throw new Error(`Invalid parameter value: ${value}. Only valid JSON strings are allowed.`);
+    }
+    return { name, value: parsedValue };
+}
+
+
+/***/ }),
+
+/***/ 869:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+/**
+ * @license node-stream-zip | (c) 2020 Antelle | https://github.com/antelle/node-stream-zip/blob/master/LICENSE
+ * Portions copyright https://github.com/cthackers/adm-zip | https://raw.githubusercontent.com/cthackers/adm-zip/master/LICENSE
+ */
+
+let fs = __nccwpck_require__(896);
+const util = __nccwpck_require__(23);
+const path = __nccwpck_require__(928);
+const events = __nccwpck_require__(434);
+const zlib = __nccwpck_require__(106);
+const stream = __nccwpck_require__(203);
+
+const consts = {
+    /* The local file header */
+    LOCHDR: 30, // LOC header size
+    LOCSIG: 0x04034b50, // "PK\003\004"
+    LOCVER: 4, // version needed to extract
+    LOCFLG: 6, // general purpose bit flag
+    LOCHOW: 8, // compression method
+    LOCTIM: 10, // modification time (2 bytes time, 2 bytes date)
+    LOCCRC: 14, // uncompressed file crc-32 value
+    LOCSIZ: 18, // compressed size
+    LOCLEN: 22, // uncompressed size
+    LOCNAM: 26, // filename length
+    LOCEXT: 28, // extra field length
+
+    /* The Data descriptor */
+    EXTSIG: 0x08074b50, // "PK\007\008"
+    EXTHDR: 16, // EXT header size
+    EXTCRC: 4, // uncompressed file crc-32 value
+    EXTSIZ: 8, // compressed size
+    EXTLEN: 12, // uncompressed size
+
+    /* The central directory file header */
+    CENHDR: 46, // CEN header size
+    CENSIG: 0x02014b50, // "PK\001\002"
+    CENVEM: 4, // version made by
+    CENVER: 6, // version needed to extract
+    CENFLG: 8, // encrypt, decrypt flags
+    CENHOW: 10, // compression method
+    CENTIM: 12, // modification time (2 bytes time, 2 bytes date)
+    CENCRC: 16, // uncompressed file crc-32 value
+    CENSIZ: 20, // compressed size
+    CENLEN: 24, // uncompressed size
+    CENNAM: 28, // filename length
+    CENEXT: 30, // extra field length
+    CENCOM: 32, // file comment length
+    CENDSK: 34, // volume number start
+    CENATT: 36, // internal file attributes
+    CENATX: 38, // external file attributes (host system dependent)
+    CENOFF: 42, // LOC header offset
+
+    /* The entries in the end of central directory */
+    ENDHDR: 22, // END header size
+    ENDSIG: 0x06054b50, // "PK\005\006"
+    ENDSIGFIRST: 0x50,
+    ENDSUB: 8, // number of entries on this disk
+    ENDTOT: 10, // total number of entries
+    ENDSIZ: 12, // central directory size in bytes
+    ENDOFF: 16, // offset of first CEN header
+    ENDCOM: 20, // zip file comment length
+    MAXFILECOMMENT: 0xffff,
+
+    /* The entries in the end of ZIP64 central directory locator */
+    ENDL64HDR: 20, // ZIP64 end of central directory locator header size
+    ENDL64SIG: 0x07064b50, // ZIP64 end of central directory locator signature
+    ENDL64SIGFIRST: 0x50,
+    ENDL64OFS: 8, // ZIP64 end of central directory offset
+
+    /* The entries in the end of ZIP64 central directory */
+    END64HDR: 56, // ZIP64 end of central directory header size
+    END64SIG: 0x06064b50, // ZIP64 end of central directory signature
+    END64SIGFIRST: 0x50,
+    END64SUB: 24, // number of entries on this disk
+    END64TOT: 32, // total number of entries
+    END64SIZ: 40,
+    END64OFF: 48,
+
+    /* Compression methods */
+    STORED: 0, // no compression
+    SHRUNK: 1, // shrunk
+    REDUCED1: 2, // reduced with compression factor 1
+    REDUCED2: 3, // reduced with compression factor 2
+    REDUCED3: 4, // reduced with compression factor 3
+    REDUCED4: 5, // reduced with compression factor 4
+    IMPLODED: 6, // imploded
+    // 7 reserved
+    DEFLATED: 8, // deflated
+    ENHANCED_DEFLATED: 9, // deflate64
+    PKWARE: 10, // PKWare DCL imploded
+    // 11 reserved
+    BZIP2: 12, //  compressed using BZIP2
+    // 13 reserved
+    LZMA: 14, // LZMA
+    // 15-17 reserved
+    IBM_TERSE: 18, // compressed using IBM TERSE
+    IBM_LZ77: 19, //IBM LZ77 z
+
+    /* General purpose bit flag */
+    FLG_ENC: 0, // encrypted file
+    FLG_COMP1: 1, // compression option
+    FLG_COMP2: 2, // compression option
+    FLG_DESC: 4, // data descriptor
+    FLG_ENH: 8, // enhanced deflation
+    FLG_STR: 16, // strong encryption
+    FLG_LNG: 1024, // language encoding
+    FLG_MSK: 4096, // mask header values
+    FLG_ENTRY_ENC: 1,
+
+    /* 4.5 Extensible data fields */
+    EF_ID: 0,
+    EF_SIZE: 2,
+
+    /* Header IDs */
+    ID_ZIP64: 0x0001,
+    ID_AVINFO: 0x0007,
+    ID_PFS: 0x0008,
+    ID_OS2: 0x0009,
+    ID_NTFS: 0x000a,
+    ID_OPENVMS: 0x000c,
+    ID_UNIX: 0x000d,
+    ID_FORK: 0x000e,
+    ID_PATCH: 0x000f,
+    ID_X509_PKCS7: 0x0014,
+    ID_X509_CERTID_F: 0x0015,
+    ID_X509_CERTID_C: 0x0016,
+    ID_STRONGENC: 0x0017,
+    ID_RECORD_MGT: 0x0018,
+    ID_X509_PKCS7_RL: 0x0019,
+    ID_IBM1: 0x0065,
+    ID_IBM2: 0x0066,
+    ID_POSZIP: 0x4690,
+
+    EF_ZIP64_OR_32: 0xffffffff,
+    EF_ZIP64_OR_16: 0xffff,
+};
+
+const StreamZip = function (config) {
+    let fd, fileSize, chunkSize, op, centralDirectory, closed;
+    const ready = false,
+        that = this,
+        entries = config.storeEntries !== false ? {} : null,
+        fileName = config.file,
+        textDecoder = config.nameEncoding ? new TextDecoder(config.nameEncoding) : null;
+
+    open();
+
+    function open() {
+        if (config.fd) {
+            fd = config.fd;
+            readFile();
+        } else {
+            fs.open(fileName, 'r', (err, f) => {
+                if (err) {
+                    return that.emit('error', err);
+                }
+                fd = f;
+                readFile();
+            });
+        }
+    }
+
+    function readFile() {
+        fs.fstat(fd, (err, stat) => {
+            if (err) {
+                return that.emit('error', err);
+            }
+            fileSize = stat.size;
+            chunkSize = config.chunkSize || Math.round(fileSize / 1000);
+            chunkSize = Math.max(
+                Math.min(chunkSize, Math.min(128 * 1024, fileSize)),
+                Math.min(1024, fileSize)
+            );
+            readCentralDirectory();
+        });
+    }
+
+    function readUntilFoundCallback(err, bytesRead) {
+        if (err || !bytesRead) {
+            return that.emit('error', err || new Error('Archive read error'));
+        }
+        let pos = op.lastPos;
+        let bufferPosition = pos - op.win.position;
+        const buffer = op.win.buffer;
+        const minPos = op.minPos;
+        while (--pos >= minPos && --bufferPosition >= 0) {
+            if (buffer.length - bufferPosition >= 4 && buffer[bufferPosition] === op.firstByte) {
+                // quick check first signature byte
+                if (buffer.readUInt32LE(bufferPosition) === op.sig) {
+                    op.lastBufferPosition = bufferPosition;
+                    op.lastBytesRead = bytesRead;
+                    op.complete();
+                    return;
+                }
+            }
+        }
+        if (pos === minPos) {
+            return that.emit('error', new Error('Bad archive'));
+        }
+        op.lastPos = pos + 1;
+        op.chunkSize *= 2;
+        if (pos <= minPos) {
+            return that.emit('error', new Error('Bad archive'));
+        }
+        const expandLength = Math.min(op.chunkSize, pos - minPos);
+        op.win.expandLeft(expandLength, readUntilFoundCallback);
+    }
+
+    function readCentralDirectory() {
+        const totalReadLength = Math.min(consts.ENDHDR + consts.MAXFILECOMMENT, fileSize);
+        op = {
+            win: new FileWindowBuffer(fd),
+            totalReadLength,
+            minPos: fileSize - totalReadLength,
+            lastPos: fileSize,
+            chunkSize: Math.min(1024, chunkSize),
+            firstByte: consts.ENDSIGFIRST,
+            sig: consts.ENDSIG,
+            complete: readCentralDirectoryComplete,
+        };
+        op.win.read(fileSize - op.chunkSize, op.chunkSize, readUntilFoundCallback);
+    }
+
+    function readCentralDirectoryComplete() {
+        const buffer = op.win.buffer;
+        const pos = op.lastBufferPosition;
+        try {
+            centralDirectory = new CentralDirectoryHeader();
+            centralDirectory.read(buffer.slice(pos, pos + consts.ENDHDR));
+            centralDirectory.headerOffset = op.win.position + pos;
+            if (centralDirectory.commentLength) {
+                that.comment = buffer
+                    .slice(
+                        pos + consts.ENDHDR,
+                        pos + consts.ENDHDR + centralDirectory.commentLength
+                    )
+                    .toString();
+            } else {
+                that.comment = null;
+            }
+            that.entriesCount = centralDirectory.volumeEntries;
+            that.centralDirectory = centralDirectory;
+            if (
+                (centralDirectory.volumeEntries === consts.EF_ZIP64_OR_16 &&
+                    centralDirectory.totalEntries === consts.EF_ZIP64_OR_16) ||
+                centralDirectory.size === consts.EF_ZIP64_OR_32 ||
+                centralDirectory.offset === consts.EF_ZIP64_OR_32
+            ) {
+                readZip64CentralDirectoryLocator();
+            } else {
+                op = {};
+                readEntries();
+            }
+        } catch (err) {
+            that.emit('error', err);
+        }
+    }
+
+    function readZip64CentralDirectoryLocator() {
+        const length = consts.ENDL64HDR;
+        if (op.lastBufferPosition > length) {
+            op.lastBufferPosition -= length;
+            readZip64CentralDirectoryLocatorComplete();
+        } else {
+            op = {
+                win: op.win,
+                totalReadLength: length,
+                minPos: op.win.position - length,
+                lastPos: op.win.position,
+                chunkSize: op.chunkSize,
+                firstByte: consts.ENDL64SIGFIRST,
+                sig: consts.ENDL64SIG,
+                complete: readZip64CentralDirectoryLocatorComplete,
+            };
+            op.win.read(op.lastPos - op.chunkSize, op.chunkSize, readUntilFoundCallback);
+        }
+    }
+
+    function readZip64CentralDirectoryLocatorComplete() {
+        const buffer = op.win.buffer;
+        const locHeader = new CentralDirectoryLoc64Header();
+        locHeader.read(
+            buffer.slice(op.lastBufferPosition, op.lastBufferPosition + consts.ENDL64HDR)
+        );
+        const readLength = fileSize - locHeader.headerOffset;
+        op = {
+            win: op.win,
+            totalReadLength: readLength,
+            minPos: locHeader.headerOffset,
+            lastPos: op.lastPos,
+            chunkSize: op.chunkSize,
+            firstByte: consts.END64SIGFIRST,
+            sig: consts.END64SIG,
+            complete: readZip64CentralDirectoryComplete,
+        };
+        op.win.read(fileSize - op.chunkSize, op.chunkSize, readUntilFoundCallback);
+    }
+
+    function readZip64CentralDirectoryComplete() {
+        const buffer = op.win.buffer;
+        const zip64cd = new CentralDirectoryZip64Header();
+        zip64cd.read(buffer.slice(op.lastBufferPosition, op.lastBufferPosition + consts.END64HDR));
+        that.centralDirectory.volumeEntries = zip64cd.volumeEntries;
+        that.centralDirectory.totalEntries = zip64cd.totalEntries;
+        that.centralDirectory.size = zip64cd.size;
+        that.centralDirectory.offset = zip64cd.offset;
+        that.entriesCount = zip64cd.volumeEntries;
+        op = {};
+        readEntries();
+    }
+
+    function readEntries() {
+        op = {
+            win: new FileWindowBuffer(fd),
+            pos: centralDirectory.offset,
+            chunkSize,
+            entriesLeft: centralDirectory.volumeEntries,
+        };
+        op.win.read(op.pos, Math.min(chunkSize, fileSize - op.pos), readEntriesCallback);
+    }
+
+    function readEntriesCallback(err, bytesRead) {
+        if (err || !bytesRead) {
+            return that.emit('error', err || new Error('Entries read error'));
+        }
+        let bufferPos = op.pos - op.win.position;
+        let entry = op.entry;
+        const buffer = op.win.buffer;
+        const bufferLength = buffer.length;
+        try {
+            while (op.entriesLeft > 0) {
+                if (!entry) {
+                    entry = new ZipEntry();
+                    entry.readHeader(buffer, bufferPos);
+                    entry.headerOffset = op.win.position + bufferPos;
+                    op.entry = entry;
+                    op.pos += consts.CENHDR;
+                    bufferPos += consts.CENHDR;
+                }
+                const entryHeaderSize = entry.fnameLen + entry.extraLen + entry.comLen;
+                const advanceBytes = entryHeaderSize + (op.entriesLeft > 1 ? consts.CENHDR : 0);
+                if (bufferLength - bufferPos < advanceBytes) {
+                    op.win.moveRight(chunkSize, readEntriesCallback, bufferPos);
+                    op.move = true;
+                    return;
+                }
+                entry.read(buffer, bufferPos, textDecoder);
+                if (!config.skipEntryNameValidation) {
+                    entry.validateName();
+                }
+                if (entries) {
+                    entries[entry.name] = entry;
+                }
+                that.emit('entry', entry);
+                op.entry = entry = null;
+                op.entriesLeft--;
+                op.pos += entryHeaderSize;
+                bufferPos += entryHeaderSize;
+            }
+            that.emit('ready');
+        } catch (err) {
+            that.emit('error', err);
+        }
+    }
+
+    function checkEntriesExist() {
+        if (!entries) {
+            throw new Error('storeEntries disabled');
+        }
+    }
+
+    Object.defineProperty(this, 'ready', {
+        get() {
+            return ready;
+        },
+    });
+
+    this.entry = function (name) {
+        checkEntriesExist();
+        return entries[name];
+    };
+
+    this.entries = function () {
+        checkEntriesExist();
+        return entries;
+    };
+
+    this.stream = function (entry, callback) {
+        return this.openEntry(
+            entry,
+            (err, entry) => {
+                if (err) {
+                    return callback(err);
+                }
+                const offset = dataOffset(entry);
+                let entryStream = new EntryDataReaderStream(fd, offset, entry.compressedSize);
+                if (entry.method === consts.STORED) {
+                    // nothing to do
+                } else if (entry.method === consts.DEFLATED) {
+                    entryStream = entryStream.pipe(zlib.createInflateRaw());
+                } else {
+                    return callback(new Error('Unknown compression method: ' + entry.method));
+                }
+                if (canVerifyCrc(entry)) {
+                    entryStream = entryStream.pipe(
+                        new EntryVerifyStream(entryStream, entry.crc, entry.size)
+                    );
+                }
+                callback(null, entryStream);
+            },
+            false
+        );
+    };
+
+    this.entryDataSync = function (entry) {
+        let err = null;
+        this.openEntry(
+            entry,
+            (e, en) => {
+                err = e;
+                entry = en;
+            },
+            true
+        );
+        if (err) {
+            throw err;
+        }
+        let data = Buffer.alloc(entry.compressedSize);
+        new FsRead(fd, data, 0, entry.compressedSize, dataOffset(entry), (e) => {
+            err = e;
+        }).read(true);
+        if (err) {
+            throw err;
+        }
+        if (entry.method === consts.STORED) {
+            // nothing to do
+        } else if (entry.method === consts.DEFLATED || entry.method === consts.ENHANCED_DEFLATED) {
+            data = zlib.inflateRawSync(data);
+        } else {
+            throw new Error('Unknown compression method: ' + entry.method);
+        }
+        if (data.length !== entry.size) {
+            throw new Error('Invalid size');
+        }
+        if (canVerifyCrc(entry)) {
+            const verify = new CrcVerify(entry.crc, entry.size);
+            verify.data(data);
+        }
+        return data;
+    };
+
+    this.openEntry = function (entry, callback, sync) {
+        if (typeof entry === 'string') {
+            checkEntriesExist();
+            entry = entries[entry];
+            if (!entry) {
+                return callback(new Error('Entry not found'));
+            }
+        }
+        if (!entry.isFile) {
+            return callback(new Error('Entry is not file'));
+        }
+        if (!fd) {
+            return callback(new Error('Archive closed'));
+        }
+        const buffer = Buffer.alloc(consts.LOCHDR);
+        new FsRead(fd, buffer, 0, buffer.length, entry.offset, (err) => {
+            if (err) {
+                return callback(err);
+            }
+            let readEx;
+            try {
+                entry.readDataHeader(buffer);
+                if (entry.encrypted) {
+                    readEx = new Error('Entry encrypted');
+                }
+            } catch (ex) {
+                readEx = ex;
+            }
+            callback(readEx, entry);
+        }).read(sync);
+    };
+
+    function dataOffset(entry) {
+        return entry.offset + consts.LOCHDR + entry.fnameLen + entry.extraLen;
+    }
+
+    function canVerifyCrc(entry) {
+        // if bit 3 (0x08) of the general-purpose flags field is set, then the CRC-32 and file sizes are not known when the header is written
+        return (entry.flags & 0x8) !== 0x8;
+    }
+
+    function extract(entry, outPath, callback) {
+        that.stream(entry, (err, stm) => {
+            if (err) {
+                callback(err);
+            } else {
+                let fsStm, errThrown;
+                stm.on('error', (err) => {
+                    errThrown = err;
+                    if (fsStm) {
+                        stm.unpipe(fsStm);
+                        fsStm.close(() => {
+                            callback(err);
+                        });
+                    }
+                });
+                fs.open(outPath, 'w', (err, fdFile) => {
+                    if (err) {
+                        return callback(err);
+                    }
+                    if (errThrown) {
+                        fs.close(fd, () => {
+                            callback(errThrown);
+                        });
+                        return;
+                    }
+                    fsStm = fs.createWriteStream(outPath, { fd: fdFile });
+                    fsStm.on('finish', () => {
+                        that.emit('extract', entry, outPath);
+                        if (!errThrown) {
+                            callback();
+                        }
+                    });
+                    stm.pipe(fsStm);
+                });
+            }
+        });
+    }
+
+    function createDirectories(baseDir, dirs, callback) {
+        if (!dirs.length) {
+            return callback();
+        }
+        let dir = dirs.shift();
+        dir = path.join(baseDir, path.join(...dir));
+        fs.mkdir(dir, { recursive: true }, (err) => {
+            if (err && err.code !== 'EEXIST') {
+                return callback(err);
+            }
+            createDirectories(baseDir, dirs, callback);
+        });
+    }
+
+    function extractFiles(baseDir, baseRelPath, files, callback, extractedCount) {
+        if (!files.length) {
+            return callback(null, extractedCount);
+        }
+        const file = files.shift();
+        const targetPath = path.join(baseDir, file.name.replace(baseRelPath, ''));
+        extract(file, targetPath, (err) => {
+            if (err) {
+                return callback(err, extractedCount);
+            }
+            extractFiles(baseDir, baseRelPath, files, callback, extractedCount + 1);
+        });
+    }
+
+    this.extract = function (entry, outPath, callback) {
+        let entryName = entry || '';
+        if (typeof entry === 'string') {
+            entry = this.entry(entry);
+            if (entry) {
+                entryName = entry.name;
+            } else {
+                if (entryName.length && entryName[entryName.length - 1] !== '/') {
+                    entryName += '/';
+                }
+            }
+        }
+        if (!entry || entry.isDirectory) {
+            const files = [],
+                dirs = [],
+                allDirs = {};
+            for (const e in entries) {
+                if (
+                    Object.prototype.hasOwnProperty.call(entries, e) &&
+                    e.lastIndexOf(entryName, 0) === 0
+                ) {
+                    let relPath = e.replace(entryName, '');
+                    const childEntry = entries[e];
+                    if (childEntry.isFile) {
+                        files.push(childEntry);
+                        relPath = path.dirname(relPath);
+                    }
+                    if (relPath && !allDirs[relPath] && relPath !== '.') {
+                        allDirs[relPath] = true;
+                        let parts = relPath.split('/').filter((f) => {
+                            return f;
+                        });
+                        if (parts.length) {
+                            dirs.push(parts);
+                        }
+                        while (parts.length > 1) {
+                            parts = parts.slice(0, parts.length - 1);
+                            const partsPath = parts.join('/');
+                            if (allDirs[partsPath] || partsPath === '.') {
+                                break;
+                            }
+                            allDirs[partsPath] = true;
+                            dirs.push(parts);
+                        }
+                    }
+                }
+            }
+            dirs.sort((x, y) => {
+                return x.length - y.length;
+            });
+            if (dirs.length) {
+                createDirectories(outPath, dirs, (err) => {
+                    if (err) {
+                        callback(err);
+                    } else {
+                        extractFiles(outPath, entryName, files, callback, 0);
+                    }
+                });
+            } else {
+                extractFiles(outPath, entryName, files, callback, 0);
+            }
+        } else {
+            fs.stat(outPath, (err, stat) => {
+                if (stat && stat.isDirectory()) {
+                    extract(entry, path.join(outPath, path.basename(entry.name)), callback);
+                } else {
+                    extract(entry, outPath, callback);
+                }
+            });
+        }
+    };
+
+    this.close = function (callback) {
+        if (closed || !fd) {
+            closed = true;
+            if (callback) {
+                callback();
+            }
+        } else {
+            closed = true;
+            fs.close(fd, (err) => {
+                fd = null;
+                if (callback) {
+                    callback(err);
+                }
+            });
+        }
+    };
+
+    const originalEmit = events.EventEmitter.prototype.emit;
+    this.emit = function (...args) {
+        if (!closed) {
+            return originalEmit.call(this, ...args);
+        }
+    };
+};
+
+StreamZip.setFs = function (customFs) {
+    fs = customFs;
+};
+
+StreamZip.debugLog = (...args) => {
+    if (StreamZip.debug) {
+        // eslint-disable-next-line no-console
+        console.log(...args);
+    }
+};
+
+util.inherits(StreamZip, events.EventEmitter);
+
+const propZip = Symbol('zip');
+
+StreamZip.async = class StreamZipAsync extends events.EventEmitter {
+    constructor(config) {
+        super();
+
+        const zip = new StreamZip(config);
+
+        zip.on('entry', (entry) => this.emit('entry', entry));
+        zip.on('extract', (entry, outPath) => this.emit('extract', entry, outPath));
+
+        this[propZip] = new Promise((resolve, reject) => {
+            zip.on('ready', () => {
+                zip.removeListener('error', reject);
+                resolve(zip);
+            });
+            zip.on('error', reject);
+        });
+    }
+
+    get entriesCount() {
+        return this[propZip].then((zip) => zip.entriesCount);
+    }
+
+    get comment() {
+        return this[propZip].then((zip) => zip.comment);
+    }
+
+    async entry(name) {
+        const zip = await this[propZip];
+        return zip.entry(name);
+    }
+
+    async entries() {
+        const zip = await this[propZip];
+        return zip.entries();
+    }
+
+    async stream(entry) {
+        const zip = await this[propZip];
+        return new Promise((resolve, reject) => {
+            zip.stream(entry, (err, stm) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(stm);
+                }
+            });
+        });
+    }
+
+    async entryData(entry) {
+        const stm = await this.stream(entry);
+        return new Promise((resolve, reject) => {
+            const data = [];
+            stm.on('data', (chunk) => data.push(chunk));
+            stm.on('end', () => {
+                resolve(Buffer.concat(data));
+            });
+            stm.on('error', (err) => {
+                stm.removeAllListeners('end');
+                reject(err);
+            });
+        });
+    }
+
+    async extract(entry, outPath) {
+        const zip = await this[propZip];
+        return new Promise((resolve, reject) => {
+            zip.extract(entry, outPath, (err, res) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(res);
+                }
+            });
+        });
+    }
+
+    async close() {
+        const zip = await this[propZip];
+        return new Promise((resolve, reject) => {
+            zip.close((err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+};
+
+class CentralDirectoryHeader {
+    read(data) {
+        if (data.length !== consts.ENDHDR || data.readUInt32LE(0) !== consts.ENDSIG) {
+            throw new Error('Invalid central directory');
+        }
+        // number of entries on this volume
+        this.volumeEntries = data.readUInt16LE(consts.ENDSUB);
+        // total number of entries
+        this.totalEntries = data.readUInt16LE(consts.ENDTOT);
+        // central directory size in bytes
+        this.size = data.readUInt32LE(consts.ENDSIZ);
+        // offset of first CEN header
+        this.offset = data.readUInt32LE(consts.ENDOFF);
+        // zip file comment length
+        this.commentLength = data.readUInt16LE(consts.ENDCOM);
+    }
+}
+
+class CentralDirectoryLoc64Header {
+    read(data) {
+        if (data.length !== consts.ENDL64HDR || data.readUInt32LE(0) !== consts.ENDL64SIG) {
+            throw new Error('Invalid zip64 central directory locator');
+        }
+        // ZIP64 EOCD header offset
+        this.headerOffset = readUInt64LE(data, consts.ENDSUB);
+    }
+}
+
+class CentralDirectoryZip64Header {
+    read(data) {
+        if (data.length !== consts.END64HDR || data.readUInt32LE(0) !== consts.END64SIG) {
+            throw new Error('Invalid central directory');
+        }
+        // number of entries on this volume
+        this.volumeEntries = readUInt64LE(data, consts.END64SUB);
+        // total number of entries
+        this.totalEntries = readUInt64LE(data, consts.END64TOT);
+        // central directory size in bytes
+        this.size = readUInt64LE(data, consts.END64SIZ);
+        // offset of first CEN header
+        this.offset = readUInt64LE(data, consts.END64OFF);
+    }
+}
+
+class ZipEntry {
+    readHeader(data, offset) {
+        // data should be 46 bytes and start with "PK 01 02"
+        if (data.length < offset + consts.CENHDR || data.readUInt32LE(offset) !== consts.CENSIG) {
+            throw new Error('Invalid entry header');
+        }
+        // version made by
+        this.verMade = data.readUInt16LE(offset + consts.CENVEM);
+        // version needed to extract
+        this.version = data.readUInt16LE(offset + consts.CENVER);
+        // encrypt, decrypt flags
+        this.flags = data.readUInt16LE(offset + consts.CENFLG);
+        // compression method
+        this.method = data.readUInt16LE(offset + consts.CENHOW);
+        // modification time (2 bytes time, 2 bytes date)
+        const timebytes = data.readUInt16LE(offset + consts.CENTIM);
+        const datebytes = data.readUInt16LE(offset + consts.CENTIM + 2);
+        this.time = parseZipTime(timebytes, datebytes);
+
+        // uncompressed file crc-32 value
+        this.crc = data.readUInt32LE(offset + consts.CENCRC);
+        // compressed size
+        this.compressedSize = data.readUInt32LE(offset + consts.CENSIZ);
+        // uncompressed size
+        this.size = data.readUInt32LE(offset + consts.CENLEN);
+        // filename length
+        this.fnameLen = data.readUInt16LE(offset + consts.CENNAM);
+        // extra field length
+        this.extraLen = data.readUInt16LE(offset + consts.CENEXT);
+        // file comment length
+        this.comLen = data.readUInt16LE(offset + consts.CENCOM);
+        // volume number start
+        this.diskStart = data.readUInt16LE(offset + consts.CENDSK);
+        // internal file attributes
+        this.inattr = data.readUInt16LE(offset + consts.CENATT);
+        // external file attributes
+        this.attr = data.readUInt32LE(offset + consts.CENATX);
+        // LOC header offset
+        this.offset = data.readUInt32LE(offset + consts.CENOFF);
+    }
+
+    readDataHeader(data) {
+        // 30 bytes and should start with "PK\003\004"
+        if (data.readUInt32LE(0) !== consts.LOCSIG) {
+            throw new Error('Invalid local header');
+        }
+        // version needed to extract
+        this.version = data.readUInt16LE(consts.LOCVER);
+        // general purpose bit flag
+        this.flags = data.readUInt16LE(consts.LOCFLG);
+        // compression method
+        this.method = data.readUInt16LE(consts.LOCHOW);
+        // modification time (2 bytes time ; 2 bytes date)
+        const timebytes = data.readUInt16LE(consts.LOCTIM);
+        const datebytes = data.readUInt16LE(consts.LOCTIM + 2);
+        this.time = parseZipTime(timebytes, datebytes);
+
+        // uncompressed file crc-32 value
+        this.crc = data.readUInt32LE(consts.LOCCRC) || this.crc;
+        // compressed size
+        const compressedSize = data.readUInt32LE(consts.LOCSIZ);
+        if (
+            compressedSize &&
+            compressedSize !== consts.EF_ZIP64_OR_32 &&
+            compressedSize !== this.compressedSize
+        ) {
+            throw new Error('Invalid compressed size');
+        }
+        // uncompressed size
+        const size = data.readUInt32LE(consts.LOCLEN);
+        if (size && size !== consts.EF_ZIP64_OR_32 && size !== this.size) {
+            throw new Error('Invalid size');
+        }
+        // filename length
+        this.fnameLen = data.readUInt16LE(consts.LOCNAM);
+        // extra field length
+        this.extraLen = data.readUInt16LE(consts.LOCEXT);
+    }
+
+    read(data, offset, textDecoder) {
+        const nameData = data.slice(offset, (offset += this.fnameLen));
+        this.name = textDecoder
+            ? textDecoder.decode(new Uint8Array(nameData))
+            : nameData.toString('utf8');
+        const lastChar = data[offset - 1];
+        this.isDirectory = lastChar === 47 || lastChar === 92;
+
+        if (this.extraLen) {
+            this.readExtra(data, offset);
+            offset += this.extraLen;
+        }
+        this.comment = this.comLen ? data.slice(offset, offset + this.comLen).toString() : null;
+    }
+
+    validateName() {
+        if (/\\|^\w+:|^\/|(^|\/)\.\.(\/|$)/.test(this.name)) {
+            throw new Error('Malicious entry: ' + this.name);
+        }
+    }
+
+    readExtra(data, offset) {
+        let signature, size;
+        const maxPos = offset + this.extraLen;
+        while (offset < maxPos) {
+            signature = data.readUInt16LE(offset);
+            offset += 2;
+            size = data.readUInt16LE(offset);
+            offset += 2;
+            if (consts.ID_ZIP64 === signature) {
+                this.parseZip64Extra(data, offset, size);
+            }
+            offset += size;
+        }
+    }
+
+    parseZip64Extra(data, offset, length) {
+        if (length >= 8 && this.size === consts.EF_ZIP64_OR_32) {
+            this.size = readUInt64LE(data, offset);
+            offset += 8;
+            length -= 8;
+        }
+        if (length >= 8 && this.compressedSize === consts.EF_ZIP64_OR_32) {
+            this.compressedSize = readUInt64LE(data, offset);
+            offset += 8;
+            length -= 8;
+        }
+        if (length >= 8 && this.offset === consts.EF_ZIP64_OR_32) {
+            this.offset = readUInt64LE(data, offset);
+            offset += 8;
+            length -= 8;
+        }
+        if (length >= 4 && this.diskStart === consts.EF_ZIP64_OR_16) {
+            this.diskStart = data.readUInt32LE(offset);
+            // offset += 4; length -= 4;
+        }
+    }
+
+    get encrypted() {
+        return (this.flags & consts.FLG_ENTRY_ENC) === consts.FLG_ENTRY_ENC;
+    }
+
+    get isFile() {
+        return !this.isDirectory;
+    }
+}
+
+class FsRead {
+    constructor(fd, buffer, offset, length, position, callback) {
+        this.fd = fd;
+        this.buffer = buffer;
+        this.offset = offset;
+        this.length = length;
+        this.position = position;
+        this.callback = callback;
+        this.bytesRead = 0;
+        this.waiting = false;
+    }
+
+    read(sync) {
+        StreamZip.debugLog('read', this.position, this.bytesRead, this.length, this.offset);
+        this.waiting = true;
+        let err;
+        if (sync) {
+            let bytesRead = 0;
+            try {
+                bytesRead = fs.readSync(
+                    this.fd,
+                    this.buffer,
+                    this.offset + this.bytesRead,
+                    this.length - this.bytesRead,
+                    this.position + this.bytesRead
+                );
+            } catch (e) {
+                err = e;
+            }
+            this.readCallback(sync, err, err ? bytesRead : null);
+        } else {
+            fs.read(
+                this.fd,
+                this.buffer,
+                this.offset + this.bytesRead,
+                this.length - this.bytesRead,
+                this.position + this.bytesRead,
+                this.readCallback.bind(this, sync)
+            );
+        }
+    }
+
+    readCallback(sync, err, bytesRead) {
+        if (typeof bytesRead === 'number') {
+            this.bytesRead += bytesRead;
+        }
+        if (err || !bytesRead || this.bytesRead === this.length) {
+            this.waiting = false;
+            return this.callback(err, this.bytesRead);
+        } else {
+            this.read(sync);
+        }
+    }
+}
+
+class FileWindowBuffer {
+    constructor(fd) {
+        this.position = 0;
+        this.buffer = Buffer.alloc(0);
+        this.fd = fd;
+        this.fsOp = null;
+    }
+
+    checkOp() {
+        if (this.fsOp && this.fsOp.waiting) {
+            throw new Error('Operation in progress');
+        }
+    }
+
+    read(pos, length, callback) {
+        this.checkOp();
+        if (this.buffer.length < length) {
+            this.buffer = Buffer.alloc(length);
+        }
+        this.position = pos;
+        this.fsOp = new FsRead(this.fd, this.buffer, 0, length, this.position, callback).read();
+    }
+
+    expandLeft(length, callback) {
+        this.checkOp();
+        this.buffer = Buffer.concat([Buffer.alloc(length), this.buffer]);
+        this.position -= length;
+        if (this.position < 0) {
+            this.position = 0;
+        }
+        this.fsOp = new FsRead(this.fd, this.buffer, 0, length, this.position, callback).read();
+    }
+
+    expandRight(length, callback) {
+        this.checkOp();
+        const offset = this.buffer.length;
+        this.buffer = Buffer.concat([this.buffer, Buffer.alloc(length)]);
+        this.fsOp = new FsRead(
+            this.fd,
+            this.buffer,
+            offset,
+            length,
+            this.position + offset,
+            callback
+        ).read();
+    }
+
+    moveRight(length, callback, shift) {
+        this.checkOp();
+        if (shift) {
+            this.buffer.copy(this.buffer, 0, shift);
+        } else {
+            shift = 0;
+        }
+        this.position += shift;
+        this.fsOp = new FsRead(
+            this.fd,
+            this.buffer,
+            this.buffer.length - shift,
+            shift,
+            this.position + this.buffer.length - shift,
+            callback
+        ).read();
+    }
+}
+
+class EntryDataReaderStream extends stream.Readable {
+    constructor(fd, offset, length) {
+        super();
+        this.fd = fd;
+        this.offset = offset;
+        this.length = length;
+        this.pos = 0;
+        this.readCallback = this.readCallback.bind(this);
+    }
+
+    _read(n) {
+        const buffer = Buffer.alloc(Math.min(n, this.length - this.pos));
+        if (buffer.length) {
+            fs.read(this.fd, buffer, 0, buffer.length, this.offset + this.pos, this.readCallback);
+        } else {
+            this.push(null);
+        }
+    }
+
+    readCallback(err, bytesRead, buffer) {
+        this.pos += bytesRead;
+        if (err) {
+            this.emit('error', err);
+            this.push(null);
+        } else if (!bytesRead) {
+            this.push(null);
+        } else {
+            if (bytesRead !== buffer.length) {
+                buffer = buffer.slice(0, bytesRead);
+            }
+            this.push(buffer);
+        }
+    }
+}
+
+class EntryVerifyStream extends stream.Transform {
+    constructor(baseStm, crc, size) {
+        super();
+        this.verify = new CrcVerify(crc, size);
+        baseStm.on('error', (e) => {
+            this.emit('error', e);
+        });
+    }
+
+    _transform(data, encoding, callback) {
+        let err;
+        try {
+            this.verify.data(data);
+        } catch (e) {
+            err = e;
+        }
+        callback(err, data);
+    }
+}
+
+class CrcVerify {
+    constructor(crc, size) {
+        this.crc = crc;
+        this.size = size;
+        this.state = {
+            crc: ~0,
+            size: 0,
+        };
+    }
+
+    data(data) {
+        const crcTable = CrcVerify.getCrcTable();
+        let crc = this.state.crc;
+        let off = 0;
+        let len = data.length;
+        while (--len >= 0) {
+            crc = crcTable[(crc ^ data[off++]) & 0xff] ^ (crc >>> 8);
+        }
+        this.state.crc = crc;
+        this.state.size += data.length;
+        if (this.state.size >= this.size) {
+            const buf = Buffer.alloc(4);
+            buf.writeInt32LE(~this.state.crc & 0xffffffff, 0);
+            crc = buf.readUInt32LE(0);
+            if (crc !== this.crc) {
+                throw new Error('Invalid CRC');
+            }
+            if (this.state.size !== this.size) {
+                throw new Error('Invalid size');
+            }
+        }
+    }
+
+    static getCrcTable() {
+        let crcTable = CrcVerify.crcTable;
+        if (!crcTable) {
+            CrcVerify.crcTable = crcTable = [];
+            const b = Buffer.alloc(4);
+            for (let n = 0; n < 256; n++) {
+                let c = n;
+                for (let k = 8; --k >= 0; ) {
+                    if ((c & 1) !== 0) {
+                        c = 0xedb88320 ^ (c >>> 1);
+                    } else {
+                        c = c >>> 1;
+                    }
+                }
+                if (c < 0) {
+                    b.writeInt32LE(c, 0);
+                    c = b.readUInt32LE(0);
+                }
+                crcTable[n] = c;
+            }
+        }
+        return crcTable;
+    }
+}
+
+function parseZipTime(timebytes, datebytes) {
+    const timebits = toBits(timebytes, 16);
+    const datebits = toBits(datebytes, 16);
+
+    const mt = {
+        h: parseInt(timebits.slice(0, 5).join(''), 2),
+        m: parseInt(timebits.slice(5, 11).join(''), 2),
+        s: parseInt(timebits.slice(11, 16).join(''), 2) * 2,
+        Y: parseInt(datebits.slice(0, 7).join(''), 2) + 1980,
+        M: parseInt(datebits.slice(7, 11).join(''), 2),
+        D: parseInt(datebits.slice(11, 16).join(''), 2),
+    };
+    const dt_str = [mt.Y, mt.M, mt.D].join('-') + ' ' + [mt.h, mt.m, mt.s].join(':') + ' GMT+0';
+    return new Date(dt_str).getTime();
+}
+
+function toBits(dec, size) {
+    let b = (dec >>> 0).toString(2);
+    while (b.length < size) {
+        b = '0' + b;
+    }
+    return b.split('');
+}
+
+function readUInt64LE(buffer, offset) {
+    return buffer.readUInt32LE(offset + 4) * 0x0000000100000000 + buffer.readUInt32LE(offset);
+}
+
+module.exports = StreamZip;
+
+
+/***/ }),
+
 /***/ 129:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -5671,7 +5671,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Task = void 0;
 const core = __importStar(__nccwpck_require__(255));
-const submit_signing_request_core_1 = __nccwpck_require__(590);
+const submit_signing_request_core_1 = __nccwpck_require__(415);
 const version_1 = __nccwpck_require__(908);
 // output variables
 // signing-request-id - the id of the newly created signing request
@@ -5943,7 +5943,7 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const submit_signing_request_core_1 = __nccwpck_require__(590);
+const submit_signing_request_core_1 = __nccwpck_require__(415);
 const task_1 = __nccwpck_require__(53);
 const helper_input_output_1 = __nccwpck_require__(754);
 const helperInputOutput = new helper_input_output_1.HelperInputOutput();
