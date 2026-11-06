@@ -62,8 +62,6 @@ outputs:
     description: 'The ID of the newly created signing request'
   signing-request-web-url:
     description: 'The URL of the signing request in SignPath'
-  signpath-api-url:
-    description: 'The base API URL of the SignPath API'
   signed-artifact-download-url:
     description: 'The URL of the signed artifact in SignPath'
 runs:
