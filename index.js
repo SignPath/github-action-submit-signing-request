@@ -234,7 +234,14 @@ class HttpClient {
             this.options.logger.debug(`Request failed without a response: ${error.message}`);
             throw error;
         }
-        this.options.logger.debug(`Received response: ${response.status} ${response.statusText} from ${url}`);
+        const responseMessage = `Received response: ${response.status} ${response.statusText} from ${url}`;
+        if (response.ok) {
+            this.options.logger.debug(responseMessage);
+        }
+        else {
+            // the status code of a failed request is always logged, the error message might not contain it (e.g. if the response has a body)
+            this.options.logger.info(responseMessage);
+        }
         if (!response.ok) {
             let data;
             try {
@@ -634,14 +641,17 @@ class SubmitSigningRequestWorkflow {
             .catch((e) => {
             if (e instanceof http_client_1.HttpError && e.response && e.response.status >= 400 && e.response.status < 500) {
                 const connectorResponse = e.response;
-                if (connectorResponse.data.error) {
+                if (connectorResponse.data?.error) {
                     this.redirectConnectorLogsToBuildLog(connectorResponse.data.logs);
                     // when an error occurs in the validator the error details are in the validationResult
                     this.checkCiSystemValidationResult(connectorResponse.data.validationResult);
-                    throw new Error(connectorResponse.data.error);
                 }
-                // got validation errors from the connector
-                return connectorResponse;
+                else if (connectorResponse.data?.validationResult) {
+                    // got validation errors from the connector
+                    return connectorResponse;
+                }
+                // contains the connector error or, for other responses (e.g. a 401 without a body for an invalid API token), the status code and the response
+                throw new Error((0, utils_1.httpErrorResponseToText)(e));
             }
             this.logger.error(`API call error: ${e.message}`);
             throw new Error((0, utils_1.httpErrorResponseToText)(e));
@@ -752,7 +762,7 @@ exports.SubmitSigningRequestWorkflow = SubmitSigningRequestWorkflow;
 /***/ }),
 
 /***/ 2738:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
@@ -765,6 +775,7 @@ exports.parseRequiredNumberInput = parseRequiredNumberInput;
 exports.parseBooleanInput = parseBooleanInput;
 exports.httpErrorResponseToText = httpErrorResponseToText;
 exports.parseUserDefinedParameters = parseUserDefinedParameters;
+const http_1 = __nccwpck_require__(8611);
 async function executeWithRetries(promise, maxTotalWaitingTimeMs, minDelayMs, maxDelayMs, logger) {
     const startTime = Date.now();
     let delayMs = minDelayMs;
@@ -833,19 +844,25 @@ function parseBooleanInput(name, value) {
     }
     throw new Error(`Input ${name} must be true or false`);
 }
+// the message for a failed request, e.g. "SignPath Pipeline Connector API returned status code 404 (Not Found). No endpoint was found"
+// the same wording as the GitLab component
 function httpErrorResponseToText(err) {
     const response = err.response;
-    if (response && response.data) {
-        // read error information from response
-        // data is a string
-        if (typeof (response.data) === "string") {
-            return response.data;
-        }
-        else if (typeof (response.data) === "object") {
-            return JSON.stringify(response.data);
-        }
+    if (!response) {
+        return err.message;
     }
-    return err.message;
+    const reasonPhrase = http_1.STATUS_CODES[response.status];
+    const message = `SignPath Pipeline Connector API returned status code ${response.status}${reasonPhrase ? ` (${reasonPhrase})` : ''}.`;
+    const reason = getErrorResponseReason(response.data);
+    return reason ? `${message} ${reason}` : message;
+}
+// the connector describes its errors in the response, other components (e.g. a reverse proxy) return e.g. an HTML page or nothing
+function getErrorResponseReason(data) {
+    if (data && typeof data === 'object') {
+        const text = [data.error, data.detail].find(value => typeof value === 'string' && value.trim());
+        return text ?? JSON.stringify(data);
+    }
+    return data === undefined || data === null ? '' : String(data).trim();
 }
 function parseUserDefinedParameters(parameters) {
     if (!parameters) {
