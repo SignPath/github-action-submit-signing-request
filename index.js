@@ -30502,42 +30502,42 @@ module.exports = {
 /***/ 2613:
 /***/ ((module) => {
 
-module.exports = require("assert");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("assert");
 
 /***/ }),
 
 /***/ 4434:
 /***/ ((module) => {
 
-module.exports = require("events");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("events");
 
 /***/ }),
 
 /***/ 9896:
 /***/ ((module) => {
 
-module.exports = require("fs");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs");
 
 /***/ }),
 
 /***/ 8611:
 /***/ ((module) => {
 
-module.exports = require("http");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("http");
 
 /***/ }),
 
 /***/ 5692:
 /***/ ((module) => {
 
-module.exports = require("https");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("https");
 
 /***/ }),
 
 /***/ 9278:
 /***/ ((module) => {
 
-module.exports = require("net");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("net");
 
 /***/ }),
 
@@ -30684,49 +30684,49 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:zlib");
 /***/ 6928:
 /***/ ((module) => {
 
-module.exports = require("path");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("path");
 
 /***/ }),
 
 /***/ 2203:
 /***/ ((module) => {
 
-module.exports = require("stream");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("stream");
 
 /***/ }),
 
 /***/ 9786:
 /***/ ((module) => {
 
-module.exports = require("stream/promises");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("stream/promises");
 
 /***/ }),
 
 /***/ 3193:
 /***/ ((module) => {
 
-module.exports = require("string_decoder");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("string_decoder");
 
 /***/ }),
 
 /***/ 4756:
 /***/ ((module) => {
 
-module.exports = require("tls");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("tls");
 
 /***/ }),
 
 /***/ 9023:
 /***/ ((module) => {
 
-module.exports = require("util");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("util");
 
 /***/ }),
 
 /***/ 3106:
 /***/ ((module) => {
 
-module.exports = require("zlib");
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("zlib");
 
 /***/ })
 
@@ -30772,7 +30772,7 @@ var __webpack_exports__ = {};
 // EXTERNAL MODULE: ./node_modules/@signpath/submit-signing-request-core/lib/src/index.js
 var src = __nccwpck_require__(7415);
 ;// CONCATENATED MODULE: external "os"
-const external_os_namespaceObject = require("os");
+const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30902,7 +30902,7 @@ function escapeProperty(s) {
 }
 //# sourceMappingURL=command.js.map
 ;// CONCATENATED MODULE: external "crypto"
-const external_crypto_namespaceObject = require("crypto");
+const external_crypto_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("crypto");
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(9896);
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/file-command.js
@@ -32208,7 +32208,7 @@ var external_string_decoder_ = __nccwpck_require__(3193);
 // EXTERNAL MODULE: external "events"
 var external_events_ = __nccwpck_require__(4434);
 ;// CONCATENATED MODULE: external "child_process"
-const external_child_process_namespaceObject = require("child_process");
+const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
 // EXTERNAL MODULE: external "assert"
 var external_assert_ = __nccwpck_require__(2613);
 ;// CONCATENATED MODULE: ./node_modules/@actions/io/lib/io-util.js
@@ -32664,7 +32664,7 @@ function io_copyFile(srcFile, destFile, force) {
 }
 //# sourceMappingURL=io.js.map
 ;// CONCATENATED MODULE: external "timers"
-const external_timers_namespaceObject = require("timers");
+const external_timers_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("timers");
 ;// CONCATENATED MODULE: ./node_modules/@actions/exec/lib/toolrunner.js
 var toolrunner_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
