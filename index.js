@@ -33717,7 +33717,7 @@ function getIDToken(aud) {
 
 //# sourceMappingURL=core.js.map
 ;// CONCATENATED MODULE: ./version.js
-const taskVersion = '3.0.0';
+const taskVersion = '3.1.0';
 
 
 ;// CONCATENATED MODULE: ./task.js
