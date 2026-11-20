@@ -11,7 +11,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Config = void 0;
 class Config {
     MinDelayBetweenSigningRequestStatusChecksInSeconds = 10; // start from 10 sec
-    MaxDelayBetweenSigningRequestStatusChecksInSeconds = 60 * 20; // check at least every 20 minutes
+    MaxDelayBetweenSigningRequestStatusChecksInSeconds = 60; // check at least every minute
 }
 exports.Config = Config;
 
@@ -30502,42 +30502,42 @@ module.exports = {
 /***/ 2613:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("assert");
+module.exports = require("assert");
 
 /***/ }),
 
 /***/ 4434:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("events");
+module.exports = require("events");
 
 /***/ }),
 
 /***/ 9896:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs");
+module.exports = require("fs");
 
 /***/ }),
 
 /***/ 8611:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("http");
+module.exports = require("http");
 
 /***/ }),
 
 /***/ 5692:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("https");
+module.exports = require("https");
 
 /***/ }),
 
 /***/ 9278:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("net");
+module.exports = require("net");
 
 /***/ }),
 
@@ -30684,49 +30684,49 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:zlib");
 /***/ 6928:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("path");
+module.exports = require("path");
 
 /***/ }),
 
 /***/ 2203:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("stream");
+module.exports = require("stream");
 
 /***/ }),
 
 /***/ 9786:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("stream/promises");
+module.exports = require("stream/promises");
 
 /***/ }),
 
 /***/ 3193:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("string_decoder");
+module.exports = require("string_decoder");
 
 /***/ }),
 
 /***/ 4756:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("tls");
+module.exports = require("tls");
 
 /***/ }),
 
 /***/ 9023:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("util");
+module.exports = require("util");
 
 /***/ }),
 
 /***/ 3106:
 /***/ ((module) => {
 
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("zlib");
+module.exports = require("zlib");
 
 /***/ })
 
@@ -30772,7 +30772,7 @@ var __webpack_exports__ = {};
 // EXTERNAL MODULE: ./node_modules/@signpath/submit-signing-request-core/lib/src/index.js
 var src = __nccwpck_require__(7415);
 ;// CONCATENATED MODULE: external "os"
-const external_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("os");
+const external_os_namespaceObject = require("os");
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/utils.js
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30902,7 +30902,7 @@ function escapeProperty(s) {
 }
 //# sourceMappingURL=command.js.map
 ;// CONCATENATED MODULE: external "crypto"
-const external_crypto_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("crypto");
+const external_crypto_namespaceObject = require("crypto");
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(9896);
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/file-command.js
@@ -32208,7 +32208,7 @@ var external_string_decoder_ = __nccwpck_require__(3193);
 // EXTERNAL MODULE: external "events"
 var external_events_ = __nccwpck_require__(4434);
 ;// CONCATENATED MODULE: external "child_process"
-const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("child_process");
+const external_child_process_namespaceObject = require("child_process");
 // EXTERNAL MODULE: external "assert"
 var external_assert_ = __nccwpck_require__(2613);
 ;// CONCATENATED MODULE: ./node_modules/@actions/io/lib/io-util.js
@@ -32664,7 +32664,7 @@ function io_copyFile(srcFile, destFile, force) {
 }
 //# sourceMappingURL=io.js.map
 ;// CONCATENATED MODULE: external "timers"
-const external_timers_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("timers");
+const external_timers_namespaceObject = require("timers");
 ;// CONCATENATED MODULE: ./node_modules/@actions/exec/lib/toolrunner.js
 var toolrunner_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
